@@ -129,21 +129,21 @@ async function main() {
         // ------------------------------------
         
         // Option A: StarFactory (适合中英文多语言文本)
-        const embedding = new StarFactoryEmbedding({
-            apiKey: process.env.STARFACTORY_API_KEY || StarFactoryEmbedding.getDefaultApiKey(), // 默认API密钥
-            baseURL: process.env.STARFACTORY_BASE_URL || 'http://10.142.99.29:8085',
-            model: 'NV-Embed-v2' // 默认模型
-        });
-        console.log('🔧 Using StarFactory embedding model');
-        console.log('🔗 API Base URL:', process.env.STARFACTORY_BASE_URL || 'http://10.142.99.29:8085');
+        // const embedding = new StarFactoryEmbedding({
+        //     apiKey: process.env.STARFACTORY_API_KEY || StarFactoryEmbedding.getDefaultApiKey(), // 默认API密钥
+        //     baseURL: process.env.STARFACTORY_BASE_URL || 'http://10.142.99.29:8085',
+        //     model: 'NV-Embed-v2' // 默认模型
+        // });
+        // console.log('🔧 Using StarFactory embedding model');
+        // console.log('🔗 API Base URL:', process.env.STARFACTORY_BASE_URL || 'http://10.142.99.29:8085');
         
-        /*
+        
         // Option B: Ollama (local model)
         const embedding = new OllamaEmbedding({
             model: "mxbai-embed-large" // Make sure you have pulled this model with `ollama pull mxbai-embed-large`
         });
         console.log('🔧 Using Ollama embedding model');
-        */
+        
 
         /*
         // Option C: OpenAI
@@ -232,9 +232,9 @@ async function main() {
             // '什么接口是根据按日期范围查询用户指标数据的？', 
             // '获取详情数据统计接口用到了什么方法',
             //'给埋点日志上报接口及其方法添加日志',
-            //'分析用户注册功能相关代码，梳理核心链路和主要逻辑',
-            //'分析用户登录功能相关代码，梳理核心链路和主要逻辑',
-            '分析aiMetricsDataReporting接口核心链路和主要逻辑',
+            '分析用户注册功能相关代码，梳理核心链路和主要逻辑',
+            '分析用户登录功能相关代码，梳理核心链路和主要逻辑',
+            //'分析aiMetricsDataReporting接口核心链路和主要逻辑',
             //'中文：分析aiMetricsDataReporting接口核心链路和主要逻辑；英文：Analyze the core workflow and primary logic of the aiMetricsDataReporting API.',
             //'用户注册,register,signup,注册功能,用户创建,账户注册,注册接口,用户管理,创建用户',
             //'login,logout,authentication,authorization,username,password,token,security,auth,captcha,session,jwt,verification,signin,register,account'
@@ -247,7 +247,8 @@ async function main() {
         ensureDirectoryExists(docsPath);
         console.log(`\n📁 Results will be saved to: ${docsPath}`);
 
-        const codebasePath = "/Users/ivem/IdeaProjects/star-factory";
+        //const codebasePath = "/Users/ivem/IdeaProjects/star-factory";
+        const codebasePath = "/Users/ivem/Desktop/rag-codebase";
         //const codebasePath = "/Users/ivem/IdeaProjects/star-factory/star-factory-user";
 
         for (const originalQuery of queries) {
