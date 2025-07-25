@@ -21,10 +21,11 @@ import { FileSynchronizer } from './sync/synchronizer';
 
 const DEFAULT_SUPPORTED_EXTENSIONS = [
     // Programming languages
-    '.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.cpp', '.c', '.h', '.hpp',
-    '.cs', '.go', '.rs', '.php', '.rb', '.swift', '.kt', '.scala', '.m', '.mm',
+    '.java',
+//    '.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.cpp', '.c', '.h', '.hpp',
+//    '.cs', '.go', '.rs', '.php', '.rb', '.swift', '.kt', '.scala', '.m', '.mm',
     // Text and markup files
-    '.md', '.markdown', '.ipynb',
+    // '.md', '.markdown', '.ipynb',
     // '.txt',  '.json', '.yaml', '.yml', '.xml', '.html', '.htm',
     // '.css', '.scss', '.less', '.sql', '.sh', '.bash', '.env'
 ];
@@ -77,6 +78,10 @@ const DEFAULT_IGNORE_PATTERNS = [
     '*.polyfills.js',
     '*.runtime.js',
     '*.map', // source map files
+
+    '.specstory/**',
+    '.star-factory/**',
+    '.cursor/**'
 ];
 
 export interface CodeIndexerConfig {
@@ -299,7 +304,7 @@ export class CodeIndexer {
             score: result.score
         }));
 
-        console.log(`✅ Found ${results.length} relevant results`);
+        console.log(`✅ Found ${results.length} relevant results with ${searchType} search`);
         return results;
     }
 
@@ -454,6 +459,7 @@ export class CodeIndexer {
 
     /**
  * Process a list of files with streaming chunk processing
+ * Each chunk will be combined with its source document for embedding
  * @param filePaths Array of file paths to process
  * @param codebasePath Base path for the codebase
  * @param onFileProcessed Callback called when each file is processed
