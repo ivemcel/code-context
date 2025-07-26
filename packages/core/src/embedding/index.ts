@@ -6,4 +6,5 @@ export * from './openai-embedding';
 export * from './voyageai-embedding';
 export * from './ollama-embedding';
 export * from './gemini-embedding';
-export * from './starfactory-embedding'; 
+export * from './starfactory-embedding';
+export * from './qwen3-embedding'; 

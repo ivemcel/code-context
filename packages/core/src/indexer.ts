@@ -304,7 +304,7 @@ export class CodeIndexer {
             score: result.score
         }));
 
-        console.log(`✅ Found ${results.length} relevant results with ${searchType} search`);
+        console.log(`✅ Found ${results.length} relevant results with semantic search`);
         return results;
     }
 
