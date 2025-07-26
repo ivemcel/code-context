@@ -60,9 +60,10 @@ export class AstCodeSplitter implements Splitter {
             const chunks = this.extractChunks(tree.rootNode, code, langConfig.nodeTypes, language, filePath);
             
             // If chunks are too large, split them further
-            const refinedChunks = await this.refineChunks(chunks, code);
+            //const refinedChunks = await this.refineChunks(chunks, code);
 
-            return refinedChunks;
+            //return refinedChunks;
+            return chunks;
         } catch (error) {
             console.warn(`⚠️  AST splitter failed for ${language}, falling back to LangChain: ${error}`);
             return await this.langchainFallback.split(code, language, filePath);
