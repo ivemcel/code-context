@@ -10,13 +10,14 @@
         "start:v2": "tsx indexV2.ts"
     },
     "dependencies": {
-        "@code-indexer/core": "workspace:*"
+        "@code-indexer/core": "workspace:*",
+        "ts-node": "^10.9.2"
     },
     "devDependencies": {
-        "tsx": "^4.0.0",
-        "typescript": "^5.0.0",
         "@types/node": "^20.0.0",
-        "dotenv": "^16.0.0"
+        "dotenv": "^16.0.0",
+        "tsx": "^4.0.0",
+        "typescript": "^5.0.0"
     },
     "private": true
 }
