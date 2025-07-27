@@ -65,7 +65,7 @@ async function main() {
     const args = process.argv.slice(2);
     
     //let filePath = "/Users/ivem/WebstormProjects/code-context/docs/LoginController.java";
-    let filePath = "/Users/ivem/IdeaProjects/star-factory/star-factory-user/src/main/java/com/starfactory/user/service/impl/LoginServinceImpl.java";
+    let filePath = "/Users/ivem/Desktop/test-voyage/LoginServinceImpl1.java";
     let language = "java";
     
     // 使用命令行参数（如果提供）
@@ -97,8 +97,7 @@ async function main() {
         
         // 对Java文件使用增强型分割器（保留注释）
         // 对其他语言默认也使用增强型，但后续可根据需求调整
-        //codeSplitter = new EnhancedAstSplitter(0, 0);
-        codeSplitter = new AnnotatedSplitter(0, 0);
+        codeSplitter = new EnhancedAstSplitter(0, 0);
 
         // if (lowerLang === 'java') {
         //     console.log(`🔍 检测到Java文件，使用增强型AST分割器（支持保留注释）`);

@@ -4,10 +4,12 @@ import {
     OllamaEmbedding,
     // Uncomment to use OpenAI or VoyageAI
     OpenAIEmbedding,
-    // VoyageAIEmbedding,
+    VoyageAIEmbedding,
     AstCodeSplitter,
     StarFactoryEmbedding,
-    MilvusRestfulVectorDatabase
+    Qwen3Embedding,
+    MilvusRestfulVectorDatabase,
+    EmbeddingVector
 } from '@code-indexer/core';
 import { EnhancedAstSplitter } from '../../packages/core/src/splitter/enhanced-ast-splitter';
 import { generateCode, GPT4Client } from '../../packages/core/src/utils/gpt4-client';
@@ -113,6 +115,157 @@ Original query: "${originalQuery}"`;
     }
 }
 
+class RateLimitedVoyageEmbedding extends VoyageAIEmbedding {
+    private lastEmbedTime: number = 0;
+    private embeddingQueue: Array<{
+        texts: string[],
+        resolve: (value: any) => void,
+        reject: (reason: any) => void
+    }> = [];
+    private processingQueue: boolean = false;
+    private tokenCount: number = 0;
+    private tokenResetTimeout: NodeJS.Timeout | null = null;
+
+    constructor(config: any) {
+        super(config);
+        console.log('🕒 Using rate-limited VoyageAI embedding (3 RPM, 10K TPM)');
+        
+        // Reset token count every minute
+        this.resetTokenCounter();
+    }
+
+    private resetTokenCounter() {
+        if (this.tokenResetTimeout) {
+            clearTimeout(this.tokenResetTimeout);
+        }
+        
+        this.tokenResetTimeout = setTimeout(() => {
+            console.log(`🔄 Resetting token count (was ${this.tokenCount})`);
+            this.tokenCount = 0;
+            this.resetTokenCounter();
+            // Process any pending requests
+            this.processQueue();
+        }, 60 * 1000); // 1 minute
+    }
+
+    private estimateTokens(texts: string[]): number {
+        // Rough estimation: ~1 token per 4 characters
+        return texts.reduce((sum, text) => sum + Math.ceil(text.length / 4), 0);
+    }
+
+    async embedBatch(texts: string[]): Promise<EmbeddingVector[]> {
+        const estimatedTokens = this.estimateTokens(texts);
+        
+        // If this would exceed our rate limit, split into smaller batches
+        if (texts.length > 5 || estimatedTokens > 8000) {
+            console.log(`⚠️ Large batch detected (${texts.length} chunks, ~${estimatedTokens} tokens), splitting into smaller batches`);
+            
+            // Process in smaller batches to avoid hitting rate limits
+            const batchSize = 5; // Small batch size to stay under limits
+            const results: EmbeddingVector[] = [];
+            
+            for (let i = 0; i < texts.length; i += batchSize) {
+                const batch = texts.slice(i, i + batchSize);
+                console.log(`📦 Processing mini-batch ${i/batchSize + 1}/${Math.ceil(texts.length/batchSize)} (${batch.length} chunks)`);
+                const batchResults = await this.embedBatchWithRateLimit(batch);
+                results.push(...batchResults);
+                
+                // Add delay between batches to respect RPM limits
+                if (i + batchSize < texts.length) {
+                    console.log('⏱️ Adding delay between batches to respect rate limits...');
+                    await new Promise(resolve => setTimeout(resolve, 21000)); // Wait ~21 seconds between batches
+                }
+            }
+            
+            return results;
+        }
+        
+        return this.embedBatchWithRateLimit(texts);
+    }
+
+    private async embedBatchWithRateLimit(texts: string[]): Promise<EmbeddingVector[]> {
+        return new Promise((resolve, reject) => {
+            this.embeddingQueue.push({ texts, resolve, reject });
+            this.processQueue();
+        });
+    }
+
+    private async processQueue() {
+        if (this.processingQueue || this.embeddingQueue.length === 0) {
+            return;
+        }
+
+        this.processingQueue = true;
+        const { texts, resolve, reject } = this.embeddingQueue.shift()!;
+        
+        // Estimate tokens for this request
+        const estimatedTokens = this.estimateTokens(texts);
+        
+        // Check if this would exceed our token limit
+        if (this.tokenCount + estimatedTokens > 10000) {
+            const waitTime = (60 - Math.floor((Date.now() - this.lastEmbedTime) / 1000)) * 1000;
+            console.log(`⏳ Token limit reached (${this.tokenCount}+${estimatedTokens} > 10K), waiting for token counter reset...`);
+            
+            // Put the request back at the front of the queue
+            this.embeddingQueue.unshift({ texts, resolve, reject });
+            
+            // Retry after the token counter resets
+            this.processingQueue = false;
+            return;
+        }
+        
+        // Check rate limit (3 requests per minute)
+        const now = Date.now();
+        const timeSinceLastRequest = now - this.lastEmbedTime;
+        
+        if (timeSinceLastRequest < 20000) { // 20 seconds minimum between requests
+            const waitTime = 20000 - timeSinceLastRequest;
+            console.log(`⏳ Rate limit: waiting ${waitTime}ms before next API call`);
+            
+            setTimeout(() => {
+                this.processingQueue = false;
+                this.processQueue();
+            }, waitTime);
+            
+            // Put the request back at the front of the queue
+            this.embeddingQueue.unshift({ texts, resolve, reject });
+            return;
+        }
+
+        // Process the request
+        try {
+            console.log(`🔤 Processing batch of ${texts.length} texts (~${estimatedTokens} tokens)`);
+            this.lastEmbedTime = now;
+            this.tokenCount += estimatedTokens;
+            
+            // Call parent class implementation
+            super.embedBatch(texts)
+                .then(result => {
+                    resolve(result);
+                    this.processingQueue = false;
+                    this.processQueue(); // Process next in queue
+                })
+                .catch(error => {
+                    console.error(`❌ Embedding error: ${error.message}`);
+                    reject(error);
+                    this.processingQueue = false;
+                    this.processQueue(); // Process next in queue
+                });
+        } catch (error) {
+            console.error(`❌ Unexpected error in rate limiter: ${error}`);
+            reject(error);
+            this.processingQueue = false;
+            this.processQueue(); // Process next in queue
+        }
+    }
+
+    // Override embed method to use our rate-limited batch process
+    async embed(text: string): Promise<EmbeddingVector> {
+        const results = await this.embedBatch([text]);
+        return results[0];
+    }
+}
+
 async function main() {
     console.log('🚀 CodeIndexer Real Usage Example');
     console.log('===============================');
@@ -129,21 +282,33 @@ async function main() {
         // ------------------------------------
         
         // Option A: StarFactory (适合中英文多语言文本)
-        // const embedding = new StarFactoryEmbedding({
-        //     apiKey: process.env.STARFACTORY_API_KEY || StarFactoryEmbedding.getDefaultApiKey(), // 默认API密钥
-        //     baseURL: process.env.STARFACTORY_BASE_URL || 'http://10.142.99.29:8085',
-        //     model: 'NV-Embed-v2' // 默认模型
-        // });
-        // console.log('🔧 Using StarFactory embedding model');
-        // console.log('🔗 API Base URL:', process.env.STARFACTORY_BASE_URL || 'http://10.142.99.29:8085');
-        
-        
-        // Option B: Ollama (local model)
-        const embedding = new OllamaEmbedding({
-            model: "mxbai-embed-large" // Make sure you have pulled this model with `ollama pull mxbai-embed-large`
+        const embedding = new StarFactoryEmbedding({
+            apiKey: process.env.STARFACTORY_API_KEY || StarFactoryEmbedding.getDefaultApiKey(), // 默认API密钥
+            baseURL: process.env.STARFACTORY_BASE_URL || 'http://10.142.99.29:8085',
+            model: 'NV-Embed-v2' // 默认模型
         });
-        console.log('🔧 Using Ollama embedding model');
         
+        
+        // // Option B: Ollama (local model)
+        // const embedding = new OllamaEmbedding({
+        //     model: "mxbai-embed-large" // Make sure you have pulled this model with `ollama pull mxbai-embed-large`
+        // });
+        // console.log('🔧 Using Ollama embedding model');
+        
+        const qwen3ApiKey = process.env.QWEN_API_KEY || 'sk-3b6eca9223744941b801b4332a70a694';
+
+        // const embedding = new Qwen3Embedding({
+        //     apiKey: qwen3ApiKey,
+        //     model: 'text-embedding-v4' // 或者使用mini/huge版本
+        // });
+
+        const voyageApiKey = process.env.VOYAGE_API_KEY || 'pa-Weutp7FYlGyUXb8mU46hQdDcvJZhs53WJ3IWQGzszQl';
+
+        // Use rate-limited embedding for VoyageAI to respect free tier limits
+        // const embedding = new RateLimitedVoyageEmbedding({
+        //     apiKey: voyageApiKey,
+        //     model: 'voyage-code-3' // 使用voyage-code-3模型，针对代码优化
+        // });
 
         /*
         // Option C: OpenAI
@@ -232,13 +397,14 @@ async function main() {
             // '什么接口是根据按日期范围查询用户指标数据的？', 
             // '获取详情数据统计接口用到了什么方法',
             //'给埋点日志上报接口及其方法添加日志',
-            '分析用户注册功能相关代码，梳理核心链路和主要逻辑',
-            '分析用户登录功能相关代码，梳理核心链路和主要逻辑',
+            //'分析用户注册功能相关代码，梳理核心链路和主要逻辑',
+            //'分析用户登录功能相关代码，梳理核心链路和主要逻辑',
             //'分析aiMetricsDataReporting接口核心链路和主要逻辑',
-            //'中文：分析aiMetricsDataReporting接口核心链路和主要逻辑；英文：Analyze the core workflow and primary logic of the aiMetricsDataReporting API.',
-            //'用户注册,register,signup,注册功能,用户创建,账户注册,注册接口,用户管理,创建用户',
+            //'用户注册 register user registration',
+            'user login authentication controller service',
             //'login,logout,authentication,authorization,username,password,token,security,auth,captcha,session,jwt,verification,signin,register,account'
-            //'Analyze user registration and login functionality, organize core pathways and main logic',
+            //'Analyze user registration functionality, organize core pathways and main logic',
+            //'Analyze user login functionality, organize core pathways and main logic',
             //'总结LoginController中的register方法逻辑'
         ];
 
@@ -247,9 +413,13 @@ async function main() {
         ensureDirectoryExists(docsPath);
         console.log(`\n📁 Results will be saved to: ${docsPath}`);
 
-        //const codebasePath = "/Users/ivem/IdeaProjects/star-factory";
-        const codebasePath = "/Users/ivem/Desktop/rag-codebase";
-        //const codebasePath = "/Users/ivem/IdeaProjects/star-factory/star-factory-user";
+        const codebasePath = "/Users/ivem/IdeaProjects/star-factory";
+        //const codebasePath = "/Users/ivem/Desktop/rag-codebase";
+        //const codebasePath = "/Users/ivem/Desktop/test-qwen";
+        //const codebasePath = "/Users/ivem/Desktop/test-starfactory";
+        //const codebasePath = "/Users/ivem/Desktop/user-data-starfactory";
+
+        //const codebasePath = "/Users/ivem/Desktop/star-factory-user-data-voyage";
 
         for (const originalQuery of queries) {
             console.log(`\n🔎 Original Search Query: "${originalQuery}"`);
