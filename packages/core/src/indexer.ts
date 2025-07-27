@@ -90,6 +90,10 @@ export interface CodeIndexerConfig {
     codeSplitter?: Splitter;
     supportedExtensions?: string[];
     ignorePatterns?: string[];
+    /** 稀疏向量嵌入模型，用于BM25等混合搜索场景 */
+    sparseEmbedding?: Embedding;
+    /** 是否启用稀疏向量支持 */
+    enableSparseVector?: boolean;
 }
 
 export class CodeIndexer {
@@ -99,6 +103,10 @@ export class CodeIndexer {
     private supportedExtensions: string[];
     private ignorePatterns: string[];
     private synchronizers = new Map<string, FileSynchronizer>();
+    /** 稀疏向量嵌入模型，可选 */
+    private sparseEmbedding?: Embedding;
+    /** 是否启用稀疏向量 */
+    private enableSparseVector: boolean = false;
 
     constructor(config: CodeIndexerConfig = {}) {
         // Initialize services
@@ -117,6 +125,16 @@ export class CodeIndexer {
 
         this.supportedExtensions = config.supportedExtensions || DEFAULT_SUPPORTED_EXTENSIONS;
         this.ignorePatterns = config.ignorePatterns || DEFAULT_IGNORE_PATTERNS;
+
+        // 初始化稀疏向量配置
+        this.sparseEmbedding = config.sparseEmbedding;
+        this.enableSparseVector = !!config.enableSparseVector;
+        
+        if (this.enableSparseVector && !this.sparseEmbedding) {
+            console.warn('⚠️ 启用了稀疏向量功能，但未提供sparseEmbedding。某些功能可能无法正常工作。');
+        } else if (this.enableSparseVector && this.sparseEmbedding) {
+            console.log(`🔢 稀疏向量已启用，使用提供商: ${this.sparseEmbedding.getProvider()}`);
+        }
     }
 
     /**
@@ -399,6 +417,7 @@ export class CodeIndexer {
     private async prepareCollection(codebasePath: string): Promise<void> {
         // Create new collection
         const collectionName = this.getCollectionName(codebasePath);
+        console.log(`准备集合: ${collectionName}`);
 
         // For Ollama embeddings, ensure dimension is detected before creating collection
         if (this.embedding.getProvider() === 'Ollama' && typeof (this.embedding as any).initializeDimension === 'function') {
@@ -406,6 +425,17 @@ export class CodeIndexer {
         }
 
         const dimension = this.embedding.getDimension();
+        
+        // 检查vectorDatabase的enableBM25设置
+        console.log(`检查vectorDatabase配置:`);
+        try {
+            // @ts-ignore
+            const enableBM25 = (this.vectorDatabase as any).config?.enableBM25;
+            console.log(`enableBM25: ${enableBM25 ? '是' : '否'}`);
+        } catch (e) {
+            console.log('无法获取vectorDatabase配置');
+        }
+        
         await this.vectorDatabase.createCollection(collectionName, dimension, `Code chunk vector storage collection for codebase: ${codebasePath}`);
         console.log(`✅ Collection ${collectionName} created successfully (dimension: ${dimension})`);
     }
@@ -555,6 +585,20 @@ export class CodeIndexer {
         const chunkContents = chunks.map(chunk => chunk.content);
         const embeddings: EmbeddingVector[] = await this.embedding.embedBatch(chunkContents);
 
+        // 处理稀疏向量（如果启用）
+        let sparseEmbeddings: EmbeddingVector[] = [];
+        if (this.enableSparseVector && this.sparseEmbedding) {
+            console.log(`🔢 为${chunks.length}个代码块生成稀疏向量...`);
+            try {
+                sparseEmbeddings = await this.sparseEmbedding.embedBatch(chunkContents);
+                console.log(`✅ 稀疏向量生成完成`);
+            } catch (error) {
+                console.error(`❌ 生成稀疏向量时出错:`, error);
+                // 失败时，仍然继续处理（使用空向量）
+                sparseEmbeddings = chunks.map(() => ({ vector: [], dimension: 0 }));
+            }
+        }
+
         // Prepare vector documents
         const documents: VectorDocument[] = chunks.map((chunk, index) => {
             if (!chunk.metadata.filePath) {
@@ -567,7 +611,8 @@ export class CodeIndexer {
             // Extract metadata that should be stored separately
             const { filePath, startLine, endLine, ...restMetadata } = chunk.metadata;
 
-            return {
+            // 基本文档
+            const document: VectorDocument = {
                 id: this.generateId(relativePath, chunk.metadata.startLine || 0, chunk.metadata.endLine || 0, chunk.content),
                 vector: embeddings[index].vector,
                 content: chunk.content,
@@ -582,6 +627,14 @@ export class CodeIndexer {
                     chunkIndex: index
                 }
             };
+
+            // 如果启用了稀疏向量，则添加sparse字段
+            if (this.enableSparseVector && sparseEmbeddings.length > index) {
+                // @ts-ignore: 添加sparse字段
+                document.sparse = sparseEmbeddings[index].vector;
+            }
+
+            return document;
         });
 
         // Store to vector database
