@@ -90,6 +90,7 @@ export interface CodeIndexerConfig {
     codeSplitter?: Splitter;
     supportedExtensions?: string[];
     ignorePatterns?: string[];
+    enableSparseVectors?: boolean; // Add option to enable sparse vector indexing
 }
 
 export class CodeIndexer {
@@ -99,6 +100,7 @@ export class CodeIndexer {
     private supportedExtensions: string[];
     private ignorePatterns: string[];
     private synchronizers = new Map<string, FileSynchronizer>();
+    private enableSparseVectors: boolean; // Flag for sparse vector support
 
     constructor(config: CodeIndexerConfig = {}) {
         // Initialize services
@@ -117,6 +119,18 @@ export class CodeIndexer {
 
         this.supportedExtensions = config.supportedExtensions || DEFAULT_SUPPORTED_EXTENSIONS;
         this.ignorePatterns = config.ignorePatterns || DEFAULT_IGNORE_PATTERNS;
+        
+        // Initialize sparse vector support
+        this.enableSparseVectors = config.enableSparseVectors || false;
+        
+        // If using MilvusVectorDatabase, pass the enableSparseVectors option
+        if (this.enableSparseVectors && this.vectorDatabase.constructor.name.includes('Milvus')) {
+            // Update the vector database configuration if it's a Milvus database
+            const milvusDb = this.vectorDatabase as any;
+            if (milvusDb && milvusDb.config) {
+                milvusDb.config.enableSparseVectors = true;
+            }
+        }
     }
 
     /**
@@ -288,11 +302,25 @@ export class CodeIndexer {
         const queryEmbedding: EmbeddingVector = await this.embedding.embed(query);
 
         // 2. Search in vector database
-        const searchResults: VectorSearchResult[] = await this.vectorDatabase.search(
-            this.getCollectionName(codebasePath),
-            queryEmbedding.vector,
-            { topK, threshold }
-        );
+        let searchResults: VectorSearchResult[];
+        
+        // Check if hybrid search is available and enabled
+        if (this.enableSparseVectors && typeof this.vectorDatabase.hybridSearch === 'function') {
+            console.log(`🔍 Using hybrid search with sparse vectors for: "${query}"`);
+            searchResults = await this.vectorDatabase.hybridSearch(
+                this.getCollectionName(codebasePath),
+                query, // Text query for sparse vector search
+                queryEmbedding.vector, // Dense vector for semantic search
+                { topK, threshold }
+            );
+        } else {
+            // Fall back to standard vector search
+            searchResults = await this.vectorDatabase.search(
+                this.getCollectionName(codebasePath),
+                queryEmbedding.vector,
+                { topK, threshold }
+            );
+        }
 
         // 3. Convert to semantic search result format
         const results: SemanticSearchResult[] = searchResults.map(result => ({
@@ -304,7 +332,7 @@ export class CodeIndexer {
             score: result.score
         }));
 
-        console.log(`✅ Found ${results.length} relevant results with semantic search`);
+        console.log(`✅ Found ${results.length} relevant results with ${this.enableSparseVectors ? 'hybrid' : 'semantic'} search`);
         return results;
     }
 

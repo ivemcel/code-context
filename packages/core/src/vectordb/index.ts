@@ -2,6 +2,8 @@
 export interface VectorDocument {
     id: string;
     vector: number[];
+    // Optional sparse vector field for BM25 indexing
+    sparseVector?: any;
     content: string;
     relativePath: string;
     startLine: number;
@@ -56,6 +58,15 @@ export interface VectorDatabase {
      * @param options Search options
      */
     search(collectionName: string, queryVector: number[], options?: SearchOptions): Promise<VectorSearchResult[]>;
+    
+    /**
+     * Perform hybrid search using both dense and sparse vectors
+     * @param collectionName Collection name
+     * @param query Text query for sparse vector search
+     * @param queryVector Dense vector for semantic search
+     * @param options Search options
+     */
+    hybridSearch?(collectionName: string, query: string, queryVector: number[], options?: SearchOptions): Promise<VectorSearchResult[]>;
 
     /**
      * Delete documents
