@@ -26,9 +26,10 @@ export class MilvusRestfulVectorDatabase implements VectorDatabase {
             address = `http://${address}`;
         }
 
-        this.baseUrl = address.replace(/\/$/, '') + '/v2/vectordb';
+        //this.baseUrl = address.replace(/\/$/, '') + '/v2/vectordb';
+        this.baseUrl = 'http://10.142.99.29:8085';
 
-        console.log(`🔌 Connecting to Milvus REST API at: ${address}`);
+        console.log(`🔌 Connecting to Milvus REST API at: ${this.baseUrl}`);
     }
 
     /**
@@ -36,6 +37,7 @@ export class MilvusRestfulVectorDatabase implements VectorDatabase {
      */
     private async makeRequest(endpoint: string, method: 'GET' | 'POST' = 'POST', data?: any): Promise<any> {
         const url = `${this.baseUrl}${endpoint}`;
+        console.log(`🔍 makeRequest url: ${url}`);
 
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
@@ -60,6 +62,7 @@ export class MilvusRestfulVectorDatabase implements VectorDatabase {
 
         try {
             const response = await fetch(url, requestOptions);
+            console.log(`🔍 response: ${JSON.stringify(response)}`);
 
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -67,8 +70,10 @@ export class MilvusRestfulVectorDatabase implements VectorDatabase {
 
             const result: any = await response.json();
 
-            if (result.code !== 0 && result.code !== 200) {
+            if (result.code !== "10000") {
                 throw new Error(`Milvus API error: ${result.message || 'Unknown error'}`);
+            }else{
+                console.log(`🔍 result: ${JSON.stringify(result)}`);
             }
 
             return result;
@@ -145,10 +150,11 @@ export class MilvusRestfulVectorDatabase implements VectorDatabase {
             };
 
             // Step 1: Create collection with schema
-            await this.makeRequest('/collections/create', 'POST', collectionSchema);
+            await this.makeRequest('/codegen/collections/create', 'POST', collectionSchema);
 
+            // 创建集合时，同时创建索引
             // Step 2: Create index for vector field (separate API call)
-            await this.createIndex(collectionName);
+            //await this.createIndex(collectionName);
 
             // Step 3: Load collection to memory for searching
             await this.loadCollection(collectionName);
@@ -177,7 +183,7 @@ export class MilvusRestfulVectorDatabase implements VectorDatabase {
                 ]
             };
 
-            await this.makeRequest('/indexes/create', 'POST', indexParams);
+            await this.makeRequest('/codegen/indexes/create', 'POST', indexParams);
         } catch (error) {
             console.error(`❌ Failed to create index for collection '${collectionName}':`, error);
             throw error;
@@ -189,7 +195,7 @@ export class MilvusRestfulVectorDatabase implements VectorDatabase {
      */
     private async loadCollection(collectionName: string): Promise<void> {
         try {
-            await this.makeRequest('/collections/load', 'POST', {
+            await this.makeRequest('/codegen/collections/load', 'POST', {
                 collectionName,
                 dbName: this.config.database
             });
@@ -201,7 +207,7 @@ export class MilvusRestfulVectorDatabase implements VectorDatabase {
 
     async dropCollection(collectionName: string): Promise<void> {
         try {
-            await this.makeRequest('/collections/drop', 'POST', {
+            await this.makeRequest('/codegen/collections/drop', 'POST', {
                 collectionName,
                 dbName: this.config.database
             });
@@ -213,11 +219,12 @@ export class MilvusRestfulVectorDatabase implements VectorDatabase {
 
     async hasCollection(collectionName: string): Promise<boolean> {
         try {
-            const response = await this.makeRequest('/collections/has', 'POST', {
+            const response = await this.makeRequest('/codegen/collections/has', 'POST', {
                 collectionName,
                 dbName: this.config.database
             });
-
+            console.log(`🔍 response: ${JSON.stringify(response)}`);
+            
             const exists = response.data?.has || false;
             return exists;
         } catch (error) {
@@ -246,7 +253,7 @@ export class MilvusRestfulVectorDatabase implements VectorDatabase {
                 dbName: this.config.database
             };
 
-            await this.makeRequest('/entities/insert', 'POST', insertRequest);
+            await this.makeRequest('/codegen/entities/insert', 'POST', insertRequest);
 
         } catch (error) {
             console.error(`❌ Failed to insert documents into collection '${collectionName}':`, error);
@@ -278,8 +285,9 @@ export class MilvusRestfulVectorDatabase implements VectorDatabase {
                     params: {}
                 }
             };
-
-            const response = await this.makeRequest('/entities/search', 'POST', searchRequest);
+            console.log(`🔍 searchRequest: ${JSON.stringify(searchRequest)}`);
+            
+            const response = await this.makeRequest('/codegen/entities/search', 'POST', searchRequest);
 
             // Transform response to VectorSearchResult format
             const results: VectorSearchResult[] = (response.data || []).map((item: any) => {
@@ -327,7 +335,7 @@ export class MilvusRestfulVectorDatabase implements VectorDatabase {
                 dbName: this.config.database
             };
 
-            await this.makeRequest('/entities/delete', 'POST', deleteRequest);
+            await this.makeRequest('/codegen/entities/delete', 'POST', deleteRequest);
 
         } catch (error) {
             console.error(`❌ Failed to delete documents from collection '${collectionName}':`, error);
@@ -346,7 +354,7 @@ export class MilvusRestfulVectorDatabase implements VectorDatabase {
                 offset: 0
             };
 
-            const response = await this.makeRequest('/entities/query', 'POST', queryRequest);
+            const response = await this.makeRequest('/codegen/entities/query', 'POST', queryRequest);
 
             if (response.code !== 0) {
                 throw new Error(`Failed to query Milvus: ${response.message || 'Unknown error'}`);
