@@ -65,7 +65,7 @@ async function main() {
     const args = process.argv.slice(2);
     
     //let filePath = "/Users/ivem/WebstormProjects/code-context/docs/LoginController.java";
-    let filePath = "/Users/ivem/Desktop/test-voyage/LoginServinceImpl1.java";
+    let filePath = "/Users/ivem/WebstormProjects/code-context/docs/codefile/UserServiceImpl.java";
     let language = "java";
     
     // 使用命令行参数（如果提供）

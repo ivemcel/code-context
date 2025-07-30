@@ -341,15 +341,24 @@ async function main() {
         const milvusToken = process.env.MILVUS_TOKEN; // Optional
         console.log(`🔌 Connecting to Milvus at: ${milvusAddress}`);
         
-        const vectorDatabase = new MilvusVectorDatabase({
-            address: milvusAddress,
-            ...(milvusToken && { token: milvusToken })
-        });
-
-        // const vectorDatabase = new MilvusRestfulVectorDatabase({
+        // const vectorDatabase = new MilvusVectorDatabase({
         //     address: milvusAddress,
         //     ...(milvusToken && { token: milvusToken })
         // });
+
+        const vectorDatabase = new MilvusRestfulVectorDatabase({ 
+            address: "http://10.142.99.29:8085", 
+            ...(milvusToken && { token: milvusToken }) 
+        });
+
+        //const codebasePath = "/Users/ivem/IdeaProjects/star-factory";
+        const codebasePath = "/Users/ivem/Desktop/test";
+        //const codebasePath = "/Users/ivem/Desktop/test-qwen";
+        //const codebasePath = "/Users/ivem/Desktop/test-starfactory";
+        //const codebasePath = "/Users/ivem/Desktop/user-data-starfactory";
+
+        //const codebasePath = "/Users/ivem/Desktop/star-factory-user-data-voyage";
+
 
         // 3. Create CodeIndexer instance
         // ----------------------------------
@@ -397,11 +406,11 @@ async function main() {
             // '什么接口是根据按日期范围查询用户指标数据的？', 
             // '获取详情数据统计接口用到了什么方法',
             //'给埋点日志上报接口及其方法添加日志',
-            //'分析用户注册功能相关代码，梳理核心链路和主要逻辑',
+            '分析用户注册功能相关代码，梳理核心链路和主要逻辑',
             //'分析用户登录功能相关代码，梳理核心链路和主要逻辑',
             //'分析aiMetricsDataReporting接口核心链路和主要逻辑',
             //'用户注册 register user registration',
-            'user login authentication controller service',
+            //'user login authentication controller service',
             //'login,logout,authentication,authorization,username,password,token,security,auth,captcha,session,jwt,verification,signin,register,account'
             //'Analyze user registration functionality, organize core pathways and main logic',
             //'Analyze user login functionality, organize core pathways and main logic',
@@ -412,14 +421,6 @@ async function main() {
         const docsPath = path.join(__dirname, '../../docs');
         ensureDirectoryExists(docsPath);
         console.log(`\n📁 Results will be saved to: ${docsPath}`);
-
-        const codebasePath = "/Users/ivem/IdeaProjects/star-factory";
-        //const codebasePath = "/Users/ivem/Desktop/rag-codebase";
-        //const codebasePath = "/Users/ivem/Desktop/test-qwen";
-        //const codebasePath = "/Users/ivem/Desktop/test-starfactory";
-        //const codebasePath = "/Users/ivem/Desktop/user-data-starfactory";
-
-        //const codebasePath = "/Users/ivem/Desktop/star-factory-user-data-voyage";
 
         for (const originalQuery of queries) {
             console.log(`\n🔎 Original Search Query: "${originalQuery}"`);

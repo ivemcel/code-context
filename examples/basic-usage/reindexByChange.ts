@@ -29,8 +29,8 @@ async function main() {
         const starFactoryBaseURL = process.env.STARFACTORY_BASE_URL || 'http://10.142.99.29:8085';
         const milvusAddress = process.env.MILVUS_ADDRESS || 'localhost:19530';
         const milvusToken = process.env.MILVUS_TOKEN;
-        //const codebasePath = process.env.TEST_CODEBASE_PATH || '/Users/ivem/Desktop/test';
-        const codebasePath = "/Users/ivem/IdeaProjects/star-factory/star-factory-user";
+        const codebasePath = process.env.TEST_CODEBASE_PATH || '/Users/ivem/Desktop/test';
+        //const codebasePath = "/Users/ivem/IdeaProjects/star-factory/star-factory-user";
 
         const vectorDatabase = new MilvusVectorDatabase({ address: milvusAddress, ...(milvusToken && { token: milvusToken }) });
         const embedding = new StarFactoryEmbedding({ 

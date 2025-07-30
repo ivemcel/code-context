@@ -360,8 +360,10 @@ export class CodeIndexer {
         progressCallback?.({ phase: 'Checking existing index...', current: 0, total: 100, percentage: 0 });
 
         const collectionName = this.getCollectionName(codebasePath);
+        console.log(`🔍 collectionName: ${collectionName}`);
+        
         const collectionExists = await this.vectorDatabase.hasCollection(collectionName);
-
+        console.log(`🔍 collectionExists: ${collectionExists}`);
         progressCallback?.({ phase: 'Removing index data...', current: 50, total: 100, percentage: 50 });
 
         if (collectionExists) {

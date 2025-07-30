@@ -260,12 +260,12 @@ async function main() {
         // 使用StarFactory作为默认嵌入模型
         const starFactoryApiKey = process.env.STARFACTORY_API_KEY || StarFactoryEmbedding.getDefaultApiKey();
         const starFactoryBaseURL = process.env.STARFACTORY_BASE_URL || 'http://10.142.99.29:8085';
-        const milvusAddress = process.env.MILVUS_ADDRESS || 'localhost:19530';
+        //const milvusAddress = process.env.MILVUS_ADDRESS || 'localhost:19530';
         const milvusToken = process.env.MILVUS_TOKEN;
         //const codebasePath = process.env.TEST_CODEBASE_PATH || '/Users/ivem/Desktop/test';
         
         //const codebasePath = "/Users/ivem/IdeaProjects/star-factory";
-        const codebasePath ="/Users/ivem/IdeaProjects/star-factory-codebase";
+        //const codebasePath ="/Users/ivem/IdeaProjects/star-factory-codebase";
         //const codebasePath = "/Users/ivem/Desktop/test-qwen";
         //const codebasePath = "/Users/ivem/Desktop/test-voyage";
         //const codebasePath = "/Users/ivem/Desktop/test-starfactory";
@@ -274,8 +274,11 @@ async function main() {
         //const codebasePath = "/Users/ivem/Desktop/user-data-voyage";
         //const codebasePath = "/Users/ivem/Desktop/user-data-starfactory";
 
-        const vectorDatabase = new MilvusVectorDatabase({ address: milvusAddress, ...(milvusToken && { token: milvusToken }) });
-        
+        const codebasePath = "/Users/ivem/Desktop/test";
+
+        //const vectorDatabase = new MilvusVectorDatabase({ address: milvusAddress, ...(milvusToken && { token: milvusToken }) });
+        const milvusAddress = "http://10.142.99.29:8085";
+        const vectorDatabase = new MilvusRestfulVectorDatabase({ address: milvusAddress, ...(milvusToken && { token: milvusToken }) });
         // Get API key from environment variables
         const voyageApiKey = process.env.VOYAGE_API_KEY || 'pa-Weutp7FYlGyUXb8mU46hQdDcvJZhs53WJ3IWQGzszQl';
 
@@ -304,11 +307,11 @@ async function main() {
         const codeSplitter = new EnhancedAstSplitter(0, 0);
 
         // Configure very small batch size for IndexCodebase
-        process.env.EMBEDDING_BATCH_SIZE = '2'; // Use smallest practical batch size
+        process.env.EMBEDDING_BATCH_SIZE = '20'; // Use smallest practical batch size
         
         const indexer = new CodeIndexer({ vectorDatabase, embedding, codeSplitter, supportedExtensions: ['.ts', '.js', '.py', '.java', '.cpp', '.go', '.rs'] });
 
-        // 1. 全量索引
+        ////1. 全量索引
         console.log('1. 执行全量索引...');
         try {
             // 强制清除现有索引，确保使用新代码创建
@@ -328,14 +331,14 @@ async function main() {
         }
         
         // 2. 增量索引
-        // console.log('2. 执行 reindexByChange...');
-        // try {
-        //     const stats = await indexer.reindexByChange(codebasePath);
-        //     console.log('reindexByChange 结果:', stats);
-        // } catch (error) {
-        //     console.error('增量索引失败:', error);
-        //     return;
-        // }
+        console.log('2. 执行 reindexByChange...');
+        try {
+            const stats = await indexer.reindexByChange(codebasePath);
+            console.log('reindexByChange 结果:', stats);
+        } catch (error) {
+            console.error('增量索引失败:', error);
+            return;
+        }
 
         // // 3. 检查快照文件
         // const normalizedPath = path.resolve(codebasePath);
