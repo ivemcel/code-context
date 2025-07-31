@@ -50,9 +50,9 @@ export class EnhancedAstSplitter extends AstCodeSplitter {
         const enhancedChunks: CodeChunk[] = [];
         
         for (const chunk of chunks) {
-            // 获取当前代码块的起始行和结束行
-            const startLine = chunk.metadata.startLine;
-            const endLine = chunk.metadata.endLine;
+            // 获取当前代码块的起始行和结束行，提供默认值避免 undefined
+            const startLine = chunk.metadata.startLine || 1;
+            const endLine = chunk.metadata.endLine || codeLines.length;
             
             // 初始化注释起始行
             let commentStartLine = startLine;
