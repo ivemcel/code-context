@@ -114,7 +114,7 @@ export const gpt4Client = new GPT4Client();
 export async function generateCode(
   prompt: string, 
   model = 'gpt-4',
-  maxTokens = 1000,
+  maxTokens = 10000,
   temperature = 0
 ): Promise<string> {
   return gpt4Client.generateCodeWithPrompt(prompt, model, maxTokens, temperature);
