@@ -16,21 +16,25 @@ An open-source implementation of the code indexing and context awareness capabil
 In the **AI-first development era**, traditional keyword-based search is no longer sufficient for modern software development:
 
 ### 🚀 **The AI Coding Revolution**
+
 - **AI-Powered IDEs** like Cursor and Claude Code are transforming development workflows
 - **Growing demand** for intelligent code assistance and semantic understanding
 - **Modern codebases** contain millions of lines across hundreds of files, making manual navigation inefficient
 
 ### ❌ **Current Limitations**
+
 - LLMs have **limited context windows** and can't process entire large codebases at once
 - Regex and keyword-based search miss **contextual relationships**
 - Some IDEs lack **context awareness** - they can't understand how different parts of your codebase relate to each other
-- Developers waste time navigating large codebases manually  
+- Developers waste time navigating large codebases manually
 - Traditional search tools can't bridge the gap between **human intent** and **code implementation**
 
 ### ✅ **Our Solution**
+
 CodeIndexer bridges the gap between human understanding and code discovery through:
+
 - **Context awareness** - understands relationships between different parts of your codebase
-- **Semantic search** with natural language queries like *"find authentication functions"*
+- **Semantic search** with natural language queries like _"find authentication functions"_
 - **AI-powered understanding** of code meaning and relationships
 - **Universal integration** across multiple platforms and development environments through MCP and VSCode extension
 
@@ -38,7 +42,7 @@ CodeIndexer bridges the gap between human understanding and code discovery throu
 
 ## ✨ Features
 
-- 🔍 **Semantic Code Search**: Ask questions like *"find functions that handle user authentication"* instead of guessing keywords
+- 🔍 **Semantic Code Search**: Ask questions like _"find functions that handle user authentication"_ instead of guessing keywords
 - 📁 **Intelligent Indexing**: Automatically index entire codebases and build semantic vector databases with contextual understanding
 - 🎯 **Context-Aware Discovery**: Find related code snippets based on meaning, not just text matching
 - ⚡ **Incremental File Synchronization**: Efficient change detection using Merkle trees to only re-index modified files
@@ -50,8 +54,37 @@ CodeIndexer bridges the gap between human understanding and code discovery throu
 - 🤖 **MCP Support**: Model Context Protocol integration for AI agent interactions
 - 📊 **Progress Tracking**: Real-time progress feedback during indexing operations
 - 🎨 **Customizable**: Configurable file extensions, ignore patterns, and embedding models
+- 📝 **Semantic Comments**: AI-generated rich semantic comments for code chunks
+
+### Semantic Code Comments
+
+The system can now automatically generate semantic-rich comments for code chunks during indexing using GPT-4. These comments include:
+
+1. Overall functionality description
+2. Input parameters with types
+3. Return value with type
+4. Dependencies and relationships with other components
+5. Important implementation details
+
+To enable this feature:
+
+```typescript
+// Enable semantic comments generation
+const codeIndexer = new CodeIndexer({
+  // ... other configuration
+  enableSemanticComments: true,
+});
+```
+
+Benefits:
+
+- Better understanding of code without reading all details
+- Enhanced semantic search results by including comments in embeddings
+- Improved contextual information for AI tools working with your codebase
+- Documentation generation that includes relationships between components
 
 ## 🏗️ Architecture
+
 ![](assets/Architecture.png)
 
 CodeIndexer is a monorepo containing three main packages:
@@ -63,6 +96,7 @@ CodeIndexer is a monorepo containing three main packages:
 - **`@code-indexer/mcp`**: Model Context Protocol server for AI agent integration
 
 ### Supported Technologies
+
 - **Embedding Providers**: [OpenAI](https://openai.com), [VoyageAI](https://voyageai.com), [Ollama](https://ollama.ai)
 - **Vector Databases**: [Milvus](https://milvus.io) or [Zilliz Cloud](https://zilliz.com/cloud)(fully managed vector database as a service)
 - **Code Splitters**: AST-based splitter (with automatic fallback), LangChain character-based splitter
@@ -91,10 +125,12 @@ pnpm add @code-indexer/core
 yarn add @code-indexer/core
 ```
 
-
 ### Prepare Environment Variables
+
 #### OpenAI API key
+
 See [OpenAI Documentation](https://platform.openai.com/docs/api-reference) for more details to get your API key.
+
 ```bash
 OPENAI_API_KEY=your-openai-api-key
 # Optional: Custom OpenAI API endpoint (for OpenAI-compatible services)
@@ -102,55 +138,67 @@ OPENAI_BASE_URL=https://your-custom-endpoint.com/v1
 ```
 
 #### Milvus configuration
+
 Zilliz Cloud(fully managed Milvus vector database as a service, you can [use it for free](https://zilliz.com/cloud))
 
 - `MILVUS_ADDRESS` is the Public Endpoint of your Zilliz Cloud instance
 - `MILVUS_TOKEN` is the token of your Zilliz Cloud instance.
+
 ```bash
 MILVUS_ADDRESS=https://xxx-xxxxxxxxxxxx.serverless.gcp-us-west1.cloud.zilliz.com
 MILVUS_TOKEN=xxxxxxx
 ```
+
 > Optional: Self-hosted Milvus. See [Milvus Documentation](https://milvus.io/docs/install_standalone-docker-compose.md) for more details to install Milvus.
 
-
-
 ### Basic Usage
+
 [@code-indexer/core](packages/core/README.md)
 Core indexing engine that provides the fundamental functionality for code indexing and semantic search. Handles embedding generation, vector storage, and search operations.
 
 ```typescript
-import { CodeIndexer, MilvusVectorDatabase, OpenAIEmbedding } from '@code-indexer/core';
+import {
+  CodeIndexer,
+  MilvusVectorDatabase,
+  OpenAIEmbedding,
+} from "@code-indexer/core";
 
 // Initialize embedding provider
 const embedding = new OpenAIEmbedding({
-    apiKey: process.env.OPENAI_API_KEY || 'your-openai-api-key',
-    model: 'text-embedding-3-small'
+  apiKey: process.env.OPENAI_API_KEY || "your-openai-api-key",
+  model: "text-embedding-3-small",
 });
 
 // Initialize vector database
 const vectorDatabase = new MilvusVectorDatabase({
-    address: process.env.MILVUS_ADDRESS || 'localhost:19530',
-    token: process.env.MILVUS_TOKEN || ''
+  address: process.env.MILVUS_ADDRESS || "localhost:19530",
+  token: process.env.MILVUS_TOKEN || "",
 });
 
 // Create indexer instance
 const indexer = new CodeIndexer({
-    embedding,
-    vectorDatabase
+  embedding,
+  vectorDatabase,
 });
 
 // Index your codebase with progress tracking
-const stats = await indexer.indexCodebase('./your-project', (progress) => {
-    console.log(`${progress.phase} - ${progress.percentage}%`);
+const stats = await indexer.indexCodebase("./your-project", (progress) => {
+  console.log(`${progress.phase} - ${progress.percentage}%`);
 });
 console.log(`Indexed ${stats.indexedFiles} files, ${stats.totalChunks} chunks`);
 
 // Perform semantic search
-const results = await indexer.semanticSearch('./your-project', 'vector database operations', 5);
-results.forEach(result => {
-    console.log(`File: ${result.relativePath}:${result.startLine}-${result.endLine}`);
-    console.log(`Score: ${(result.score * 100).toFixed(2)}%`);
-    console.log(`Content: ${result.content.substring(0, 100)}...`);
+const results = await indexer.semanticSearch(
+  "./your-project",
+  "vector database operations",
+  5
+);
+results.forEach((result) => {
+  console.log(
+    `File: ${result.relativePath}:${result.startLine}-${result.endLine}`
+  );
+  console.log(`Score: ${(result.score * 100).toFixed(2)}%`);
+  console.log(`Content: ${result.content.substring(0, 100)}...`);
 });
 ```
 
@@ -160,12 +208,11 @@ All the following packages are built on top of the `@code-indexer/core` engine, 
 
 > 📖 Each package has its own detailed documentation and usage examples. Click the links below to learn more.
 
+### [@code-indexer/mcp](packages/mcp/README.md)
 
-### [@code-indexer/mcp](packages/mcp/README.md) 
 Model Context Protocol (MCP) server that enables AI assistants and agents to interact with CodeIndexer through a standardized protocol. Exposes indexing and search capabilities via MCP tools.
 The MCP module supports four embedding model providers: Gemini, OpenAI, Voyage AI, and Ollama. This tutorial uses OpenAI as an example. To configure a different provider, please click [here](packages/mcp/README.md) for more information.
 ![img](https://lh7-rt.googleusercontent.com/slidesz/AGV_vUfOR-7goqarF653roYT5u_HY_J3VkMMeUPUc2ZVj11ue82_tIzE_lIOuJ27HWcVYjTEQj2S3v9tZtS0-AXpyOP6F9VV_mymssD-57wT_ZVjF2MrS7cm5Ynj0goSEPpy81N4xSqi=s2048?key=DDtZSt7cnK5OdJgxQI2Ysg)
-
 
 <details>
 <summary><strong>Cursor</strong></summary>
@@ -353,7 +400,7 @@ To configure Code Indexer MCP in Augment Code, you can use either the graphical 
 
 7. Click the **Add** button.
 
-------
+---
 
 #### **B. Manual Configuration**
 
@@ -363,11 +410,11 @@ To configure Code Indexer MCP in Augment Code, you can use either the graphical 
 4. Add the server configuration to the `mcpServers` array in the `augment.advanced` object
 
 ```json
-"augment.advanced": { 
-  "mcpServers": [ 
-    { 
-      "name": "code-indexer", 
-      "command": "npx", 
+"augment.advanced": {
+  "mcpServers": [
+    {
+      "name": "code-indexer",
+      "command": "npx",
       "args": ["-y", "@code-indexer/mcp@latest"],
       "env": {
         "OPENAI_API_KEY": "your-openai-api-key",
@@ -439,7 +486,6 @@ Roo Code utilizes a JSON configuration file for MCP servers:
 
 </details>
 
-
 <details>
 <summary><strong>Other MCP Clients</strong></summary>
 
@@ -452,19 +498,17 @@ npx @code-indexer/mcp@latest
 </details>
 
 ### [VSCode Extension](packages/vscode-extension/README.md)
+
 Visual Studio Code extension that integrates CodeIndexer directly into your IDE. Provides an intuitive interface for semantic code search and navigation.
 
 1. **Direct Link**: [Install from VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=zilliz.semanticcodesearch)
 
 2. **Manual Search**:
-    - Open Extensions view in VSCode (Ctrl+Shift+X or Cmd+Shift+X on Mac)
-    - Search for "Semantic Code Search"
-    - Click Install
-
+   - Open Extensions view in VSCode (Ctrl+Shift+X or Cmd+Shift+X on Mac)
+   - Search for "Semantic Code Search"
+   - Click Install
 
 ![img](https://lh7-rt.googleusercontent.com/docsz/AD_4nXddRXEWLX9uzbAZa9FgHo77leAgYneIclqWObTM9To_Deo4fBIOZFrsM8_IVjCnJQeuOO1FgtI_IFj9S8MWnUX3aej98QvhlGrCbGALQ-d2c0DgyJEj3-Nsg-ufX39-951DamHmkA?key=_L-CtW461S9w7NRqzdFOIg)
-
-
 
 ## 🛠️ Development
 
@@ -505,16 +549,17 @@ cd examples/basic-usage
 pnpm dev
 ```
 
-
 ### Supported File Extensions
 
 By default, CodeIndexer supports:
+
 - Programming languages: `.ts`, `.tsx`, `.js`, `.jsx`, `.py`, `.java`, `.cpp`, `.c`, `.h`, `.hpp`, `.cs`, `.go`, `.rs`, `.php`, `.rb`, `.swift`, `.kt`, `.scala`, `.m`, `.mm`
 - Documentation: `.md`, `.markdown`
 
 ### Ignore Patterns
 
 Common directories and files are automatically ignored:
+
 - `node_modules/**`, `dist/**`, `build/**`
 - `.git/**`, `.vscode/**`, `.idea/**`
 - `*.log`, `*.min.js`, `*.map`
@@ -530,10 +575,10 @@ Check the `/examples` directory for complete usage examples:
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to get started.
 
 **Package-specific contributing guides:**
-- [Core Package Contributing](packages/core/CONTRIBUTING.md)
-- [MCP Server Contributing](packages/mcp/CONTRIBUTING.md)  
-- [VSCode Extension Contributing](packages/vscode-extension/CONTRIBUTING.md)
 
+- [Core Package Contributing](packages/core/CONTRIBUTING.md)
+- [MCP Server Contributing](packages/mcp/CONTRIBUTING.md)
+- [VSCode Extension Contributing](packages/vscode-extension/CONTRIBUTING.md)
 
 ## 🗺️ Roadmap
 
