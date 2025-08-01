@@ -42,10 +42,15 @@ export class MilvusRestfulVectorDatabase implements VectorDatabase {
             'Accept': 'application/json'
         };
 
-        // Handle authentication
+        // username和password拼接好的token
         if (this.config.token) {
-            headers['Authorization'] = `Bearer ${this.config.token}`;
-        } else if (this.config.username && this.config.password) {
+            // 设置token头
+            headers['token'] = this.config.token;
+        }
+        
+        // 使用信息
+        if (this.config.username || this.config.password) {
+            // 使用提供的用户名密码
             headers['Authorization'] = `Bearer ${this.config.username}:${this.config.password}`;
         }
 

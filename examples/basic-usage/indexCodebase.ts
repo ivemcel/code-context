@@ -259,9 +259,8 @@ async function main() {
         console.log(`[${timestamp}] ==== index codebase 测试 ====`);
         // 使用StarFactory作为默认嵌入模型
         const starFactoryApiKey = process.env.STARFACTORY_API_KEY || StarFactoryEmbedding.getDefaultApiKey();
-        const starFactoryBaseURL = process.env.STARFACTORY_BASE_URL || 'http://10.142.99.29:8085';
-        //const milvusAddress = process.env.MILVUS_ADDRESS || 'localhost:19530';
-        const milvusToken = process.env.MILVUS_TOKEN;
+        const starFactoryBaseURL = process.env.STARFACTORY_BASE_URL || 'http://10.142.99.29:8085/codegen/milvus';
+
         //const codebasePath = process.env.TEST_CODEBASE_PATH || '/Users/ivem/Desktop/test';
         
         //const codebasePath = "/Users/ivem/IdeaProjects/star-factory";
@@ -274,11 +273,20 @@ async function main() {
         //const codebasePath = "/Users/ivem/Desktop/user-data-voyage";
         //const codebasePath = "/Users/ivem/Desktop/user-data-starfactory";
 
-        const codebasePath = "/Users/ivem/Desktop/test";
-
-        //const vectorDatabase = new MilvusVectorDatabase({ address: milvusAddress, ...(milvusToken && { token: milvusToken }) });
-        const milvusAddress = "http://10.142.99.29:8085";
-        const vectorDatabase = new MilvusRestfulVectorDatabase({ address: milvusAddress, ...(milvusToken && { token: milvusToken }) });
+        const codebasePath = "/Users/ivem/Desktop/test2";
+        // const milvusAddress = process.env.MILVUS_ADDRESS || 'localhost:19530';
+        // const milvusToken = process.env.MILVUS_TOKEN; 
+        // const vectorDatabase = new MilvusVectorDatabase({ address: milvusAddress, ...(milvusToken && { token: milvusToken }) });
+        
+        const milvusAddress = "http://10.142.99.29:8085/codegen/milvus";
+        // 设置Milvus认证令牌，与curl命令中相同
+        const milvusToken = "0mLuObS85gpX5wLhY6sFR4pWxasO0FuA"; 
+        const vectorDatabase = new MilvusRestfulVectorDatabase({ 
+            address: milvusAddress,
+            token: milvusToken,
+            username: "root",
+            password: "Y2GuWnu#ksvbQ*TRd" 
+        });
         // Get API key from environment variables
         const voyageApiKey = process.env.VOYAGE_API_KEY || 'pa-Weutp7FYlGyUXb8mU46hQdDcvJZhs53WJ3IWQGzszQl';
 

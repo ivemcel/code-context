@@ -18,6 +18,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { FileSynchronizer } from './sync/synchronizer';
+import { generateCode } from './utils/gpt4-client';
 
 const DEFAULT_SUPPORTED_EXTENSIONS = [
     // Programming languages
@@ -561,8 +562,67 @@ export class CodeIndexer {
     }
 
     /**
- * Process accumulated chunk buffer
- */
+     * Generate semantic-rich Chinese comments for code chunks using GPT-4
+     * @param chunks Array of code chunks
+     * @param codebasePath Base path of the codebase
+     * @returns Enhanced chunks with comments in their content
+     */
+    private async generateChunkComments(chunks: CodeChunk[], codebasePath: string): Promise<CodeChunk[]> {
+        console.log(`🤖 Generating semantic-rich Chinese comments for ${chunks.length} chunks...`);
+        
+        try {
+            // Prepare chunks for comment generation
+            const chunkPromises = chunks.map(async (chunk, index) => {
+                try {
+                    const language = chunk.metadata.language || 'unknown';
+                    const relativePath = path.relative(codebasePath, chunk.metadata.filePath || '');
+                    
+                    // Build prompt for GPT-4
+                    const prompt = `你是一位代码文档专家。请为以下${language}代码片段生成语义丰富的中文注释。
+注释需要包括：
+1. 功能描述：代码的主要功能和目的
+2. 输入参数：每个参数的作用和类型
+3. 返回结果：返回值的含义和格式
+4. 依赖关系：与其他模块或函数的依赖关系
+
+代码片段如下（来自 ${relativePath}）：
+\`\`\`
+${chunk.content}
+\`\`\`
+
+请仅返回中文注释，不要修改或重写代码。`;
+
+                    // Call GPT-4 API to generate comments
+                    const comments = await generateCode(prompt, 'gpt-4', 20000, 0);
+                    
+                    // Create a new chunk with comments prepended to the content
+                    const enhancedChunk: CodeChunk = {
+                        // Prepend comments to the content instead of storing in metadata
+                        content: `## 原始chunk\n${chunk.content}\n\n## 增强描述chunk：\n${comments}`,
+                        metadata: { ...chunk.metadata }
+                    };
+                    
+                    return enhancedChunk;
+                } catch (error) {
+                    console.error(`❌ Failed to generate comments for chunk ${index}: ${error}`);
+                    return chunk; // Return original chunk on error
+                }
+            });
+            
+            // Wait for all comment generation to complete
+            const enhancedChunks = await Promise.all(chunkPromises);
+            console.log(`✅ Successfully generated comments for ${enhancedChunks.length} chunks`);
+            
+            return enhancedChunks;
+        } catch (error) {
+            console.error(`❌ Failed to generate comments batch: ${error}`);
+            return chunks; // Return original chunks on error
+        }
+    }
+
+    /**
+     * Process accumulated chunk buffer
+     */
     private async processChunkBuffer(chunkBuffer: Array<{ chunk: CodeChunk; codebasePath: string }>): Promise<void> {
         if (chunkBuffer.length === 0) return;
 
@@ -572,18 +632,36 @@ export class CodeIndexer {
 
         // Estimate tokens (rough estimation: 1 token ≈ 4 characters)
         const estimatedTokens = chunks.reduce((sum, chunk) => sum + Math.ceil(chunk.content.length / 4), 0);
-
+        
         console.log(`🔄 Processing batch of ${chunks.length} chunks (~${estimatedTokens} tokens)`);
-        await this.processChunkBatch(chunks, codebasePath);
+        
+        try {
+            // Generate semantic-rich Chinese comments for chunks
+            const enhancedChunks = await this.generateChunkComments(chunks, codebasePath);
+            
+            // Process chunks with comments
+            await this.processChunkBatch(codebasePath, chunks, enhancedChunks);
+        } catch (error) {
+            console.error(`❌ Failed during chunk processing: ${error}`);
+            // Fallback to processing without comments
+            await this.processChunkBatch(codebasePath, chunks);
+        }
     }
 
     /**
      * Process a batch of chunks
      */
-    private async processChunkBatch(chunks: CodeChunk[], codebasePath: string): Promise<void> {
+    private async processChunkBatch(codebasePath: string, chunks: CodeChunk[], enhancedChunks?: CodeChunk[]): Promise<void> {
         // Generate embedding vectors
         const chunkContents = chunks.map(chunk => chunk.content);
-        const embeddings: EmbeddingVector[] = await this.embedding.embedBatch(chunkContents);
+        console.log(`🔄 chunkContents: ${chunkContents}`);
+
+        // 如果enhancedChunks不为空，则使用enhancedChunks的content
+        const enhancedChunkContents = enhancedChunks ? enhancedChunks.map(chunk => chunk.content) : chunkContents;
+        console.log(`🔄 enhancedChunkContents: ${enhancedChunkContents}`);
+
+        // 对enhancedChunkContents进行embedding；colelction中存的还是原始chunk(包括原有注释)
+        const embeddings: EmbeddingVector[] = await this.embedding.embedBatch(enhancedChunkContents);
 
         // Prepare vector documents
         const documents: VectorDocument[] = chunks.map((chunk, index) => {
