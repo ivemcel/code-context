@@ -337,22 +337,27 @@ async function main() {
 
         // 2. Configure Vector Database
         // --------------------------------
-        const milvusAddress = process.env.MILVUS_ADDRESS || 'localhost:19530';
-        const milvusToken = process.env.MILVUS_TOKEN; // Optional
-        console.log(`🔌 Connecting to Milvus at: ${milvusAddress}`);
+        // const milvusAddress = process.env.MILVUS_ADDRESS || 'localhost:19530';
+        // const milvusToken = process.env.MILVUS_TOKEN; // Optional
+        // console.log(`🔌 Connecting to Milvus at: ${milvusAddress}`);
         
         // const vectorDatabase = new MilvusVectorDatabase({
         //     address: milvusAddress,
         //     ...(milvusToken && { token: milvusToken })
         // });
 
+        const milvusAddress = "http://10.142.99.29:8085/codegen/milvus";
+        // 设置Milvus认证令牌，与curl命令中相同
+        const milvusToken = "0mLuObS85gpX5wLhY6sFR4pWxasO0FuA"; 
         const vectorDatabase = new MilvusRestfulVectorDatabase({ 
-            address: "http://10.142.99.29:8085", 
-            ...(milvusToken && { token: milvusToken }) 
+            address: milvusAddress,
+            // token: milvusToken,
+            username: "root",
+            password: "Y2GuWnu#ksvbQ*TRd" 
         });
 
         //const codebasePath = "/Users/ivem/IdeaProjects/star-factory";
-        const codebasePath = "/Users/ivem/Desktop/test";
+        const codebasePath = "/Users/ivem/Desktop/test2";
         //const codebasePath = "/Users/ivem/Desktop/test-qwen";
         //const codebasePath = "/Users/ivem/Desktop/test-starfactory";
         //const codebasePath = "/Users/ivem/Desktop/user-data-starfactory";

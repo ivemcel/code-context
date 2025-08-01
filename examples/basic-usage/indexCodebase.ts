@@ -283,7 +283,7 @@ async function main() {
         const milvusToken = "0mLuObS85gpX5wLhY6sFR4pWxasO0FuA"; 
         const vectorDatabase = new MilvusRestfulVectorDatabase({ 
             address: milvusAddress,
-            token: milvusToken,
+            // token: milvusToken,
             username: "root",
             password: "Y2GuWnu#ksvbQ*TRd" 
         });
