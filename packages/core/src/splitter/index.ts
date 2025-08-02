@@ -6,6 +6,7 @@ export interface CodeChunk {
         endLine: number;
         language?: string;
         filePath?: string;
+        nodeType?: string; // Add nodeType field
     };
 }
 

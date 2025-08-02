@@ -126,6 +126,7 @@ export class AstCodeSplitter implements Splitter {
                             endLine,
                             language,
                             filePath,
+                            nodeType: currentNode.type, // Add node type to metadata
                         }
                     });
                 }
@@ -148,6 +149,7 @@ export class AstCodeSplitter implements Splitter {
                     endLine: codeLines.length,
                     language,
                     filePath,
+                    nodeType: 'file', // Default node type for whole file
                 }
             });
         }

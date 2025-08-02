@@ -243,134 +243,8 @@ class RateLimitedVoyageEmbedding extends VoyageAIEmbedding {
 }
 
 async function main() {
-    // 替换为中国时间格式 (UTC+8)
-    const timestamp = new Date().toLocaleString('zh-CN', {
-        timeZone: 'Asia/Shanghai', 
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-    }).replace(/[\/-]/g, '-').replace(/[,]/g, ' ');
-    
-    try {
-        console.log(`[${timestamp}] ==== index codebase 测试 ====`);
-        // 使用StarFactory作为默认嵌入模型
-        const starFactoryApiKey = process.env.STARFACTORY_API_KEY || StarFactoryEmbedding.getDefaultApiKey();
-        const starFactoryBaseURL = process.env.STARFACTORY_BASE_URL || 'http://10.142.99.29:8085/codegen/milvus';
-
-        //const codebasePath = process.env.TEST_CODEBASE_PATH || '/Users/ivem/Desktop/test';
-        
-        //const codebasePath = "/Users/ivem/IdeaProjects/star-factory";
-        //const codebasePath ="/Users/ivem/IdeaProjects/star-factory-codebase";
-        //const codebasePath = "/Users/ivem/Desktop/test-qwen";
-        //const codebasePath = "/Users/ivem/Desktop/test-voyage";
-        //const codebasePath = "/Users/ivem/Desktop/test-starfactory";
-        
-        //const codebasePath = "/Users/ivem/Desktop/user-data-qwen";
-        //const codebasePath = "/Users/ivem/Desktop/user-data-voyage";
-        //const codebasePath = "/Users/ivem/Desktop/user-data-starfactory";
-
-        const codebasePath = "/Users/ivem/Desktop/test2";
-        // const milvusAddress = process.env.MILVUS_ADDRESS || 'localhost:19530';
-        // const milvusToken = process.env.MILVUS_TOKEN; 
-        // const vectorDatabase = new MilvusVectorDatabase({ address: milvusAddress, ...(milvusToken && { token: milvusToken }) });
-        
-        const milvusAddress = "http://10.142.99.29:8085/codegen/milvus";
-        // 设置Milvus认证令牌，与curl命令中相同
-        const milvusToken = "0mLuObS85gpX5wLhY6sFR4pWxasO0FuA"; 
-        const vectorDatabase = new MilvusRestfulVectorDatabase({ 
-            address: milvusAddress,
-            // token: milvusToken,
-            username: "root",
-            password: "Y2GuWnu#ksvbQ*TRd" 
-        });
-        // Get API key from environment variables
-        const voyageApiKey = process.env.VOYAGE_API_KEY || 'pa-Weutp7FYlGyUXb8mU46hQdDcvJZhs53WJ3IWQGzszQl';
-
-        //Use rate-limited embedding for VoyageAI to respect free tier limits
-        // let embedding = new RateLimitedVoyageEmbedding({
-        //     apiKey: voyageApiKey,
-        //     model: 'voyage-code-3' // 使用voyage-code-3模型，针对代码优化
-        // });
-        
-
-        // const qwen3ApiKey = "sk-3b6eca9223744941b801b4332a70a694"
-        // const embedding = new Qwen3Embedding({
-        //     apiKey: qwen3ApiKey,
-        //     model: 'text-embedding-v4' // 或者使用mini/huge版本
-        // });
-
-        //// 使用star-factory-embedding
-        const embedding = new StarFactoryEmbedding({
-            baseURL: 'http://10.142.99.29:8085',
-            apiKey: starFactoryApiKey
-        });
-        
-        
-        //const embedding = new OllamaEmbedding();
-        // 使用增强型AST分割器，支持保留注释
-        const codeSplitter = new EnhancedAstSplitter(0, 0);
-
-        // Configure very small batch size for IndexCodebase
-        process.env.EMBEDDING_BATCH_SIZE = '20'; // Use smallest practical batch size
-        
-        const indexer = new CodeIndexer({ vectorDatabase, embedding, codeSplitter, supportedExtensions: ['.ts', '.js', '.py', '.java', '.cpp', '.go', '.rs'] });
-
-        ////1. 全量索引
-        console.log('1. 执行全量索引...');
-        try {
-            // 强制清除现有索引，确保使用新代码创建
-            console.log('强制清除现有本地索引文件，确保使用修复后的代码...');
-            // 注意clearIndex会删除集合重新创建！！！！丢失数据！！！！
-            await indexer.clearIndex(codebasePath);
-            
-            // 添加延迟确保旧索引被完全删除
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            console.log('开始创建新索引...');
-            await indexer.indexCodebase(codebasePath);
-            console.log('全量索引完成');
-        } catch (error) {
-            console.error('全量索引失败:', error);
-            return;
-        }
-        
-        // 2. 增量索引
-        console.log('2. 执行 reindexByChange...');
-        try {
-            const stats = await indexer.reindexByChange(codebasePath);
-            console.log('reindexByChange 结果:', stats);
-        } catch (error) {
-            console.error('增量索引失败:', error);
-            return;
-        }
-
-        // // 3. 检查快照文件
-        // const normalizedPath = path.resolve(codebasePath);
-        // const hash = require('crypto').createHash('md5').update(normalizedPath).digest('hex');
-        // const snapshotDir = path.join(os.homedir(), '.codeindexer', 'merkle');
-        // const snapshotFile = path.join(snapshotDir, `code_chunks_${hash.substring(0, 8)}.json`);
-        // const exists = fs.existsSync(snapshotFile);
-        // console.log('快照文件路径:', snapshotFile);
-        // console.log('快照文件是否存在:', exists);
-
-    } catch (error) {
-        console.error('❌ Error occurred:', error);
-        // Add specific error handling for different services if needed
-        process.exit(1);
-    } finally {
-        // 清理定时器资源
-        // if (embedding) {
-        //     embedding.cleanup();
-        // }
-        // 确保程序正常退出，不留下悬挂的定时器
-        console.log('程序执行完成，即将退出');
-        
-        // 更新结束时间戳为中国时间
-        const endTimestamp = new Date().toLocaleString('zh-CN', {
+        // 替换为中国时间格式 (UTC+8)
+        const timestamp = new Date().toLocaleString('zh-CN', {
             timeZone: 'Asia/Shanghai', 
             year: 'numeric',
             month: '2-digit',
@@ -380,12 +254,171 @@ async function main() {
             second: '2-digit',
             hour12: false
         }).replace(/[\/-]/g, '-').replace(/[,]/g, ' ');
+    console.log(`[${timestamp}] ==== index codebase 测试 ====`);
+
+    // Set environment variables for comment generation performance
+    process.env.ENABLE_COMMENTS = process.env.ENABLE_COMMENTS || 'true';
+    process.env.COMMENT_BATCH_SIZE = process.env.COMMENT_BATCH_SIZE || '20'; // Process 20 chunks at once
+    process.env.MAX_PARALLEL_BATCHES = process.env.MAX_PARALLEL_BATCHES || '10'; // 10 concurrent batches
+    process.env.EMBEDDING_BATCH_SIZE = process.env.EMBEDDING_BATCH_SIZE || '100'; // Bigger batch size for embeddings
+
+    // 1. Configure vector database client
+    console.log('🔌 Connecting to vector database at: ', process.env.MILVUS_HOST || 'localhost:19530');
+    //const milvusAddress = "http://10.142.99.29:8085/codegen/milvus";
+    const vectorDb = new MilvusRestfulVectorDatabase({
+        address: process.env.MILVUS_HOST || 'localhost:19530',
+        username: "root",
+        password: "Y2GuWnu#ksvbQ*TRd", 
+        database: "tongwen"
+    });
+    
+    // 2. Configure text embedding client
+    let embedding: any;
+
+    // Use environment variable to select embedding provider
+    const embeddingProvider = process.env.EMBEDDING_PROVIDER || 'starfactory';
+    console.log(`🧠 Using embedding provider: ${embeddingProvider}`);
+    
+    switch (embeddingProvider.toLowerCase()) {
+        case 'openai':
+            if (!process.env.OPENAI_API_KEY) {
+                throw new Error('OPENAI_API_KEY environment variable is required for OpenAI embeddings');
+            }
+            embedding = new OpenAIEmbedding({
+                apiKey: process.env.OPENAI_API_KEY,
+                model: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-ada-002',
+                ...(process.env.OPENAI_BASE_URL && { baseURL: process.env.OPENAI_BASE_URL })
+            });
+            break;
         
-        console.log(`[${endTimestamp}] ==== index codebase 测试完成 ====`);
-        // 给一点时间让最后的日志输出
-        setTimeout(() => {
-            process.exit(0);
-        }, 500);
+        case 'starfactory':
+            embedding = new StarFactoryEmbedding({
+                baseURL: 'http://10.142.99.29:8085',
+                apiKey: StarFactoryEmbedding.getDefaultApiKey()
+            });
+            break;
+            
+        case 'qwen':
+            if (!process.env.QWEN_API_KEY) {
+                throw new Error('QWEN_API_KEY environment variable is required for Qwen embeddings');
+            }
+            embedding = new Qwen3Embedding({
+                apiKey: process.env.QWEN_API_KEY,
+                model: process.env.QWEN_EMBEDDING_MODEL || 'text-embedding-v1',
+            });
+            break;
+            
+        case 'voyage':
+            if (!process.env.VOYAGE_API_KEY) {
+                throw new Error('VOYAGE_API_KEY environment variable is required for Voyage AI embeddings');
+            }
+            // Use rate-limited client for free tier to avoid rate limiting errors
+            if (process.env.VOYAGE_USE_RATE_LIMIT === 'true') {
+                embedding = new RateLimitedVoyageEmbedding({
+                    apiKey: process.env.VOYAGE_API_KEY,
+                    model: process.env.VOYAGE_EMBEDDING_MODEL || 'voyage-2',
+                });
+            } else {
+                embedding = new VoyageAIEmbedding({
+                    apiKey: process.env.VOYAGE_API_KEY,
+                    model: process.env.VOYAGE_EMBEDDING_MODEL || 'voyage-2',
+                });
+            }
+            break;
+            
+        case 'ollama':
+            embedding = new OllamaEmbedding({
+                host: process.env.OLLAMA_HOST || 'http://localhost:11434',
+                model: process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text',
+            });
+            break;
+            
+        default:
+            throw new Error(`Unknown embedding provider: ${embeddingProvider}`);
+    }
+    
+    // 3. Configure code splitter
+    console.log('🧩 Initializing code splitter...');
+    
+    // Use enhanced AST splitter by default, fall back to regular if needed
+    let splitter;
+    try {
+        splitter = new EnhancedAstSplitter(0, 0);
+        console.log('✓ Using EnhancedAstSplitter');
+    } catch (error) {
+        console.warn('⚠️ Failed to initialize EnhancedAstSplitter, falling back to AstCodeSplitter', error);
+        splitter = new AstCodeSplitter(2500, 300);
+    }
+
+    // 4. Initialize code indexer
+    const indexer = new CodeIndexer({
+        embedding,
+        vectorDatabase: vectorDb,
+        codeSplitter: splitter,
+        supportedExtensions: ['.java'],
+        enableSparseVectors: false
+    });
+
+    // Customize ignore patterns
+    // try {
+    //     // This tool will automatically merge with default patterns
+    //     const gitIgnorePatterns = await CodeIndexer.getIgnorePatternsFromFile(path.join(process.cwd(), '.gitignore'));
+    //     indexer.updateIgnorePatterns(gitIgnorePatterns);
+    // } catch (error) {
+    //     console.warn('⚠️ Could not read .gitignore file, using default patterns only');
+    // }
+
+    // 5. Process command line arguments
+    const args = process.argv.slice(2);
+    const command = args[0] || 'index';
+    // Default to current directory if not specified
+    //const targetDir = args[1] || process.env.TARGET_CODEBASE_PATH || process.cwd();
+    const targetDir = "/Users/ivem/Desktop/test";
+    // 检查文件夹是否存在
+    if (!fs.existsSync(targetDir)) {
+        console.error(`❌ 文件夹不存在: ${targetDir}`);
+        process.exit(1);
+    }
+    try {
+        console.log(`1. 执行全量索引...`);
+        
+        // Force clear index first if requested (for clean state testing)
+        console.log(`process.env.FORCE_CLEAR_INDEX: ${process.env.FORCE_CLEAR_INDEX}`);
+        if (process.env.FORCE_CLEAR_INDEX === 'true') {
+            console.log('强制清除现有本地索引文件，确保使用修复后的代码...');
+            await indexer.clearIndex(targetDir);
+        }
+        
+        // Check for existing index
+        const hasIndex = await indexer.hasIndex(targetDir);
+        
+        if (hasIndex) {
+            console.log('本地索引已存在，使用增量索引...');
+            await indexer.reindexByChange(targetDir, progress => {
+                // Update progress in logs
+                if (progress.percentage % 10 === 0) {
+                    console.log(`📊 Progress: ${progress.phase} (${progress.percentage}%)`);
+                }
+            });
+        } else {
+            console.log('开始创建新索引...');
+            await indexer.indexCodebase(targetDir, progress => {
+                // Update progress in logs
+                if (progress.percentage % 10 === 0) {
+                    console.log(`📊 Progress: ${progress.phase} (${progress.percentage}%)`);
+                }
+            });
+        }
+        
+        // Clean up any rate limiters if used
+        if (embedding.cleanup && typeof embedding.cleanup === 'function') {
+            embedding.cleanup();
+        }
+        
+        console.log('索引完成！✅');
+    } catch (error) {
+        console.error('❌ Error during indexing:', error);
+        process.exit(1);
     }
 }
 

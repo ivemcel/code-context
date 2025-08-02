@@ -82,7 +82,12 @@ const DEFAULT_IGNORE_PATTERNS = [
 
     '.specstory/**',
     '.star-factory/**',
-    '.cursor/**'
+    '.cursor/**',
+    '/docs/**',
+    '/test/**',
+    // 所有.开头的
+    '.*/**'
+
 ];
 
 export interface CodeIndexerConfig {
@@ -571,52 +576,187 @@ export class CodeIndexer {
         console.log(`🤖 Generating semantic-rich Chinese comments for ${chunks.length} chunks...`);
         
         try {
-            // Prepare chunks for comment generation
-            const chunkPromises = chunks.map(async (chunk, index) => {
-                try {
-                    const language = chunk.metadata.language || 'unknown';
-                    const relativePath = path.relative(codebasePath, chunk.metadata.filePath || '');
-                    
-                    // Build prompt for GPT-4
-                    const prompt = `你是一位代码文档专家。请为以下${language}代码片段生成语义丰富的中文注释。
-注释需要包括：
+            // Configuration for batch processing
+            // const BATCH_SIZE = parseInt(process.env.COMMENT_BATCH_SIZE || '5', 10); // Process N chunks in a single API call
+            // const MAX_PARALLEL_BATCHES = parseInt(process.env.MAX_PARALLEL_BATCHES || '3', 10); // Max parallel API calls
+            
+            const BATCH_SIZE = 20; // Process N chunks in a single API call
+            const MAX_PARALLEL_BATCHES = 10; // Max parallel API calls
+            console.log(`📊 Using batch size: ${BATCH_SIZE}, max parallel batches: ${MAX_PARALLEL_BATCHES}`);
+            
+            // Create batches of chunks
+            const batches: CodeChunk[][] = [];
+            for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+                batches.push(chunks.slice(i, Math.min(i + BATCH_SIZE, chunks.length)));
+            }
+            
+            // Create a result array pre-filled with original chunks as fallback
+            const resultChunks = [...chunks];
+            
+            // Process batches with limited parallelism
+            for (let i = 0; i < batches.length; i += MAX_PARALLEL_BATCHES) {
+                const currentBatches = batches.slice(i, i + MAX_PARALLEL_BATCHES);
+                const batchPromises = currentBatches.map((batch, batchIndex) => 
+                    this.processCommentBatch(batch, chunks, resultChunks, codebasePath, i + batchIndex)
+                );
+                
+                // Wait for the current set of batches to complete
+                await Promise.all(batchPromises);
+                console.log(`✅ Completed processing ${Math.min((i + MAX_PARALLEL_BATCHES), batches.length)}/${batches.length} batches`);
+            }
+            
+            console.log(`✅ Successfully generated comments for all chunks`);
+            return resultChunks;
+        } catch (error) {
+            console.error(`❌ Failed to generate comments batch: ${error}`);
+            return chunks; // Return original chunks on error
+        }
+    }
+
+    /**
+     * Process a single batch of chunks for comment generation
+     * @param batch The batch of chunks to process
+     * @param allChunks All chunks (for reference)
+     * @param resultChunks The result array to update
+     * @param codebasePath The codebase path
+     * @param batchNumber The batch number for logging
+     */
+    private async processCommentBatch(
+        batch: CodeChunk[], 
+        allChunks: CodeChunk[], 
+        resultChunks: CodeChunk[], 
+        codebasePath: string,
+        batchNumber: number
+    ): Promise<void> {
+        try {
+            // Prepare batch for comment generation
+            const batchPrompts = batch.map((chunk) => {
+                const language = chunk.metadata.language || 'unknown';
+                const relativePath = path.relative(codebasePath, chunk.metadata.filePath || '');
+                let nodeType = chunk.metadata.nodeType || 'unknown';
+                
+                // 如果metadata中没有nodeType，则通过内容推断
+                if (nodeType === 'unknown' && language === 'java') {
+                    if (chunk.content.includes('class ') && !chunk.content.includes('interface ')) {
+                        nodeType = 'class_declaration';
+                    } else if (chunk.content.includes('interface ')) {
+                        nodeType = 'interface_declaration';
+                    } else if (chunk.content.match(/\b[A-Z][A-Za-z0-9_]*\s*\([^)]*\)\s*(\{|throws)/)) {
+                        nodeType = 'constructor_declaration';
+                    } else if (chunk.content.match(/\b(public|private|protected)?\s+(static\s+)?(final\s+)?\w+(<[^>]+>)?\s+\w+\s*\([^)]*\)/)) {
+                        nodeType = 'method_declaration';
+                    }
+                }
+                
+                return {
+                    chunkIndex: allChunks.indexOf(chunk),
+                    language,
+                    relativePath,
+                    nodeType,
+                    content: chunk.content
+                };
+            });
+            
+            // Build a single batch prompt for GPT-4
+            const batchPrompt = `你是一位代码文档专家。请为以下${batchPrompts.length}个代码片段生成语义丰富的中文注释。
+对每个代码片段，注释需要包括：
 1. 功能描述：代码的主要功能和目的
 2. 输入参数：每个参数的作用和类型
 3. 返回结果：返回值的含义和格式
 4. 依赖关系：与其他模块或函数的依赖关系
 
-代码片段如下（来自 ${relativePath}）：
-\`\`\`
-${chunk.content}
+请按照下面的格式回复，确保为每个代码片段生成独立的注释。格式为JSON数组：
+
+\`\`\`json
+[
+  {
+    "chunkIndex": 0,
+    "comments": "这里是对第一个代码片段的注释..."
+  },
+  {
+    "chunkIndex": 1,
+    "comments": "这里是对第二个代码片段的注释..."
+  },
+  // 以此类推...
+]
 \`\`\`
 
-请仅返回中文注释，不要修改或重写代码。`;
+下面是代码片段：
 
-                    // Call GPT-4 API to generate comments
-                    const comments = await generateCode(prompt, 'gpt-4', 20000, 0);
-                    
-                    // Create a new chunk with comments prepended to the content
-                    const enhancedChunk: CodeChunk = {
-                        // Prepend comments to the content instead of storing in metadata
-                        content: `## 原始chunk\n${chunk.content}\n\n## 增强描述chunk：\n${comments}`,
-                        metadata: { ...chunk.metadata }
+${batchPrompts.map((prompt, index) => `
+--- 代码片段 ${prompt.chunkIndex} (来自 ${prompt.relativePath}) ---
+语言: ${prompt.language}
+节点类型: ${prompt.nodeType}
+依赖提示: ${prompt.language === 'java' ? this.getJavaDependencyPrompt(prompt.nodeType) : '与其他模块或函数的依赖关系'}
+
+\`\`\`
+${prompt.content}
+\`\`\`
+`).join('\n\n')}`;
+
+            console.log(`🔄 Processing batch #${batchNumber} with ${batch.length} chunks...`);
+            
+            // Call GPT-4 API once for the batch
+            const startTime = Date.now();
+            const batchCommentsResponse = await generateCode(batchPrompt, 'gpt-4', 32000, 0);
+            const duration = Date.now() - startTime;
+            console.log(`⏱️ Batch #${batchNumber} completed in ${(duration/1000).toFixed(2)}s`);
+            
+            // Parse the JSON response
+            let commentsData: { chunkIndex: number; comments: string }[] = [];
+            try {
+                // Extract JSON array from the response
+                const jsonMatch = batchCommentsResponse.match(/```json\n([\s\S]*?)\n```/) || 
+                                 batchCommentsResponse.match(/```\n([\s\S]*?)\n```/) ||
+                                 [null, batchCommentsResponse];
+                
+                const jsonContent = jsonMatch ? jsonMatch[1] : batchCommentsResponse;
+                commentsData = JSON.parse(jsonContent);
+            } catch (error) {
+                console.error(`Failed to parse comments JSON for batch #${batchNumber}: ${error}`);
+                // Fallback: treat the entire response as a single comment for all chunks
+                commentsData = batchPrompts.map(p => ({ 
+                    chunkIndex: p.chunkIndex, 
+                    comments: `解析失败，原始回复:\n${batchCommentsResponse}` 
+                }));
+            }
+            
+            // Apply the comments to the result chunks
+            for (const commentData of commentsData) {
+                const chunkIndex = commentData.chunkIndex;
+                if (chunkIndex >= 0 && chunkIndex < allChunks.length) {
+                    const originalChunk = allChunks[chunkIndex];
+                    resultChunks[chunkIndex] = {
+                        content: `## 原始chunk\n${originalChunk.content}\n\n## 增强描述chunk：\n${commentData.comments}`,
+                        metadata: { ...originalChunk.metadata }
                     };
-                    
-                    return enhancedChunk;
-                } catch (error) {
-                    console.error(`❌ Failed to generate comments for chunk ${index}: ${error}`);
-                    return chunk; // Return original chunk on error
                 }
-            });
+            }
             
-            // Wait for all comment generation to complete
-            const enhancedChunks = await Promise.all(chunkPromises);
-            console.log(`✅ Successfully generated comments for ${enhancedChunks.length} chunks`);
-            
-            return enhancedChunks;
+            console.log(`✅ Processed batch #${batchNumber} with ${batch.length} chunks`);
         } catch (error) {
-            console.error(`❌ Failed to generate comments batch: ${error}`);
-            return chunks; // Return original chunks on error
+            console.error(`❌ Failed to generate comments for batch #${batchNumber}: ${error}`);
+            // Original chunks are already in the resultChunks array as fallback
+        }
+    }
+
+    /**
+     * Get Java dependency prompt based on node type
+     * @param nodeType Type of Java node (class, method, interface, constructor)
+     * @returns Specific dependency prompt
+     */
+    private getJavaDependencyPrompt(nodeType: string): string {
+        switch (nodeType) {
+            case 'class_declaration':
+                return '详细分析类的继承关系、实现的接口、类的依赖关系（例如：类成员、内部类、使用的其他类）';
+            case 'method_declaration':
+                return '详细分析方法调用的其他方法或服务、使用的类或对象、调用链路、操作的数据结构';
+            case 'interface_declaration':
+                return '详细分析接口的继承关系、定义的方法契约、哪些类实现了该接口、接口与其他接口的关系';
+            case 'constructor_declaration':
+                return '详细分析构造函数初始化的对象依赖、注入的服务、调用的其他构造函数、创建的对象生命周期';
+            default:
+                return '与其他模块或函数的依赖关系、调用链路和数据流';
         }
     }
 
@@ -636,8 +776,14 @@ ${chunk.content}
         console.log(`🔄 Processing batch of ${chunks.length} chunks (~${estimatedTokens} tokens)`);
         
         try {
-            // Generate semantic-rich Chinese comments for chunks
-            const enhancedChunks = await this.generateChunkComments(chunks, codebasePath);
+            // Generate semantic-rich Chinese comments for chunks - only if enabled
+            const ENABLE_COMMENTS = process.env.ENABLE_COMMENTS === 'true';
+            let enhancedChunks: CodeChunk[] = chunks;
+            
+            if (ENABLE_COMMENTS) {
+                console.log(`🤖 Generating comments enabled - processing chunks with comments`);
+                enhancedChunks = await this.generateChunkComments(chunks, codebasePath);
+            }
             
             // Process chunks with comments
             await this.processChunkBatch(codebasePath, chunks, enhancedChunks);
