@@ -6,7 +6,8 @@ export interface CodeChunk {
         endLine: number;
         language?: string;
         filePath?: string;
-        nodeType?: string; // Add nodeType field
+        nodeType?: string;
+        nodeName?: string; // 添加节点名称属性
     };
 }
 

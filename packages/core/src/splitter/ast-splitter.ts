@@ -119,6 +119,12 @@ export class AstCodeSplitter implements Splitter {
 
                 // Only create chunk if it has meaningful content
                 if (nodeText.trim().length > 0) {
+                    // 提取Java节点的名称
+                    let nodeName = '';
+                    if (language.toLowerCase() === 'java') {
+                        nodeName = this.extractJavaNodeName(currentNode, nodeText);
+                    }
+
                     chunks.push({
                         content: nodeText,
                         metadata: {
@@ -127,6 +133,7 @@ export class AstCodeSplitter implements Splitter {
                             language,
                             filePath,
                             nodeType: currentNode.type, // Add node type to metadata
+                            nodeName: nodeName || undefined, // 添加节点名称到metadata
                         }
                     });
                 }
@@ -155,6 +162,58 @@ export class AstCodeSplitter implements Splitter {
         }
 
         return chunks;
+    }
+
+    /**
+     * 提取Java节点的名称（类名、方法名、接口名等）
+     * @param node 语法节点
+     * @param nodeText 节点文本
+     * @returns 节点名称
+     */
+    private extractJavaNodeName(node: Parser.SyntaxNode, nodeText: string): string {
+        try {
+            let name = '';
+            
+            // 根据节点类型提取名称
+            switch (node.type) {
+                case 'class_declaration':
+                    // 查找类名标识符节点
+                    const classIdentifier = node.children.find(child => child.type === 'identifier');
+                    if (classIdentifier) {
+                        name = nodeText.slice(classIdentifier.startIndex - node.startIndex, classIdentifier.endIndex - node.startIndex);
+                    }
+                    break;
+                    
+                case 'method_declaration':
+                    // 查找方法名标识符节点
+                    const methodIdentifier = node.children.find(child => child.type === 'identifier');
+                    if (methodIdentifier) {
+                        name = nodeText.slice(methodIdentifier.startIndex - node.startIndex, methodIdentifier.endIndex - node.startIndex);
+                    }
+                    break;
+                    
+                case 'interface_declaration':
+                    // 查找接口名标识符节点
+                    const interfaceIdentifier = node.children.find(child => child.type === 'identifier');
+                    if (interfaceIdentifier) {
+                        name = nodeText.slice(interfaceIdentifier.startIndex - node.startIndex, interfaceIdentifier.endIndex - node.startIndex);
+                    }
+                    break;
+                    
+                case 'constructor_declaration':
+                    // 查找构造函数名标识符节点
+                    const constructorIdentifier = node.children.find(child => child.type === 'identifier');
+                    if (constructorIdentifier) {
+                        name = nodeText.slice(constructorIdentifier.startIndex - node.startIndex, constructorIdentifier.endIndex - node.startIndex);
+                    }
+                    break;
+            }
+            
+            return name.trim();
+        } catch (error) {
+            console.warn(`⚠️ Failed to extract Java node name: ${error}`);
+            return '';
+        }
     }
 
     private async refineChunks(chunks: CodeChunk[], originalCode: string): Promise<CodeChunk[]> {

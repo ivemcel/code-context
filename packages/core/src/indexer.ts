@@ -574,14 +574,12 @@ export class CodeIndexer {
      */
     private async generateChunkComments(chunks: CodeChunk[], codebasePath: string): Promise<CodeChunk[]> {
         console.log(`🤖 Generating semantic-rich Chinese comments for ${chunks.length} chunks...`);
+        const startTime = Date.now();
         
         try {
             // Configuration for batch processing
-            // const BATCH_SIZE = parseInt(process.env.COMMENT_BATCH_SIZE || '5', 10); // Process N chunks in a single API call
-            // const MAX_PARALLEL_BATCHES = parseInt(process.env.MAX_PARALLEL_BATCHES || '3', 10); // Max parallel API calls
-            
-            const BATCH_SIZE = 20; // Process N chunks in a single API call
-            const MAX_PARALLEL_BATCHES = 10; // Max parallel API calls
+            const BATCH_SIZE = 10; // Process N chunks in a single API call
+            const MAX_PARALLEL_BATCHES = 20; // Max parallel API calls
             console.log(`📊 Using batch size: ${BATCH_SIZE}, max parallel batches: ${MAX_PARALLEL_BATCHES}`);
             
             // Create batches of chunks
@@ -596,19 +594,40 @@ export class CodeIndexer {
             // Process batches with limited parallelism
             for (let i = 0; i < batches.length; i += MAX_PARALLEL_BATCHES) {
                 const currentBatches = batches.slice(i, i + MAX_PARALLEL_BATCHES);
+                const batchStartTime = Date.now();
                 const batchPromises = currentBatches.map((batch, batchIndex) => 
-                    this.processCommentBatch(batch, chunks, resultChunks, codebasePath, i + batchIndex)
+                    this.processCommentBatch(batch, chunks, resultChunks, codebasePath, i + batchIndex, BATCH_SIZE)
                 );
                 
                 // Wait for the current set of batches to complete
                 await Promise.all(batchPromises);
-                console.log(`✅ Completed processing ${Math.min((i + MAX_PARALLEL_BATCHES), batches.length)}/${batches.length} batches`);
+                const batchDuration = Date.now() - batchStartTime;
+                console.log(`✅ Completed processing ${Math.min((i + MAX_PARALLEL_BATCHES), batches.length)}/${batches.length} batches in ${(batchDuration/1000).toFixed(2)}s`);
             }
             
-            console.log(`✅ Successfully generated comments for all chunks`);
+            // 验证结果数组长度是否与输入数组一致
+            if (resultChunks.length !== chunks.length) {
+                console.warn(`⚠️ 警告: 结果块数量(${resultChunks.length})与输入块数量(${chunks.length})不一致!`);
+            }
+            
+            // 验证每个代码块是否都有对应的增强注释
+            let missingComments = 0;
+            for (let i = 0; i < resultChunks.length; i++) {
+                if (resultChunks[i].content === chunks[i].content) {
+                    console.warn(`⚠️ 警告: 代码块 ${i} 没有生成增强注释!`);
+                    missingComments++;
+                }
+            }
+            if (missingComments > 0) {
+                console.warn(`⚠️ 总计 ${missingComments} 个代码块没有生成增强注释!`);
+            }
+            
+            const totalDuration = Date.now() - startTime;
+            console.log(`✅ Successfully generated comments for all chunks in ${(totalDuration/1000).toFixed(2)}s (${(totalDuration/chunks.length).toFixed(2)}ms per chunk)`);
             return resultChunks;
         } catch (error) {
-            console.error(`❌ Failed to generate comments batch: ${error}`);
+            const totalDuration = Date.now() - startTime;
+            console.error(`❌ Failed to generate comments batch after ${(totalDuration/1000).toFixed(2)}s: ${error}`);
             return chunks; // Return original chunks on error
         }
     }
@@ -620,17 +639,31 @@ export class CodeIndexer {
      * @param resultChunks The result array to update
      * @param codebasePath The codebase path
      * @param batchNumber The batch number for logging
+     * @param batchSize The size of each batch
      */
     private async processCommentBatch(
         batch: CodeChunk[], 
         allChunks: CodeChunk[], 
         resultChunks: CodeChunk[], 
         codebasePath: string,
-        batchNumber: number
+        batchNumber: number,
+        batchSize: number
     ): Promise<void> {
+        const batchStartTime = Date.now();
+        let promptTime = 0;
+        let apiCallTime = 0;
+        let parseTime = 0;
+        
         try {
             // Prepare batch for comment generation
-            const batchPrompts = batch.map((chunk) => {
+            const prepStartTime = Date.now();
+            // 计算当前批次在所有代码块中的实际起始索引位置
+            const batchStartIndex = batchNumber * batchSize;
+            
+            const batchPrompts = batch.map((chunk, localIndex) => {
+                // 使用全局索引而非局部索引
+                const globalChunkIndex = batchStartIndex + localIndex;
+                
                 const language = chunk.metadata.language || 'unknown';
                 const relativePath = path.relative(codebasePath, chunk.metadata.filePath || '');
                 let nodeType = chunk.metadata.nodeType || 'unknown';
@@ -649,7 +682,8 @@ export class CodeIndexer {
                 }
                 
                 return {
-                    chunkIndex: allChunks.indexOf(chunk),
+                    // 关键修改：直接使用全局索引，而不是allChunks.indexOf(chunk)或局部索引
+                    chunkIndex: globalChunkIndex,
                     language,
                     relativePath,
                     nodeType,
@@ -658,24 +692,25 @@ export class CodeIndexer {
             });
             
             // Build a single batch prompt for GPT-4
-            const batchPrompt = `你是一位代码文档专家。请为以下${batchPrompts.length}个代码片段生成语义丰富的中文注释。
+            const batchPrompt = `你是一位专业的代码文档专家。请为以下${batchPrompts.length}个代码片段生成详尽、语义丰富的中文注释。
+
 对每个代码片段，注释需要包括：
 1. 功能描述：代码的主要功能和目的
 2. 输入参数：每个参数的作用和类型
 3. 返回结果：返回值的含义和格式
-4. 依赖关系：与其他模块或函数的依赖关系
+4. 依赖关系：与其他函数或模块的依赖关系，包括调用关系和数据流
 
-请按照下面的格式回复，确保为每个代码片段生成独立的注释。格式为JSON数组：
+请按照下面的格式回复，确保为每个代码片段生成独立的注释，并保留正确的chunkIndex。格式为JSON数组：
 
 \`\`\`json
 [
   {
-    "chunkIndex": 0,
-    "comments": "这里是对第一个代码片段的注释..."
+    "chunkIndex": ${batchStartIndex}, // 注意: 这是全局索引，而非局部索引
+    "comments": "这里是对第一个代码片段的详细注释..."
   },
   {
-    "chunkIndex": 1,
-    "comments": "这里是对第二个代码片段的注释..."
+    "chunkIndex": ${batchStartIndex + 1}, // 请根据全局索引递增
+    "comments": "这里是对第二个代码片段的详细注释..."
   },
   // 以此类推...
 ]
@@ -687,22 +722,26 @@ ${batchPrompts.map((prompt, index) => `
 --- 代码片段 ${prompt.chunkIndex} (来自 ${prompt.relativePath}) ---
 语言: ${prompt.language}
 节点类型: ${prompt.nodeType}
-依赖提示: ${prompt.language === 'java' ? this.getJavaDependencyPrompt(prompt.nodeType) : '与其他模块或函数的依赖关系'}
+依赖提示: ${prompt.language === 'java' ? this.getJavaDependencyPrompt(prompt.nodeType) : '与其他函数或模块的依赖关系'}
 
 \`\`\`
 ${prompt.content}
 \`\`\`
 `).join('\n\n')}`;
 
-            console.log(`🔄 Processing batch #${batchNumber} with ${batch.length} chunks...`);
+            promptTime = Date.now() - prepStartTime;
+            console.log(`🔄 Processing batch #${batchNumber} with ${batch.length} chunks (prompt prep: ${promptTime}ms)...`);
             
             // Call GPT-4 API once for the batch
-            const startTime = Date.now();
+            const apiStartTime = Date.now();
             const batchCommentsResponse = await generateCode(batchPrompt, 'gpt-4', 32000, 0);
-            const duration = Date.now() - startTime;
-            console.log(`⏱️ Batch #${batchNumber} completed in ${(duration/1000).toFixed(2)}s`);
+            //console.log(`🔄 batchCommentsResponse: ${batchCommentsResponse}`);
+            apiCallTime = Date.now() - apiStartTime;
+            const duration = Date.now() - batchStartTime;
+            console.log(`⏱️ Batch #${batchNumber} API call completed in ${(apiCallTime/1000).toFixed(2)}s (${(apiCallTime/batch.length).toFixed(0)}ms/chunk)`);
             
             // Parse the JSON response
+            const parseStartTime = Date.now();
             let commentsData: { chunkIndex: number; comments: string }[] = [];
             try {
                 // Extract JSON array from the response
@@ -712,6 +751,34 @@ ${prompt.content}
                 
                 const jsonContent = jsonMatch ? jsonMatch[1] : batchCommentsResponse;
                 commentsData = JSON.parse(jsonContent);
+
+                // 验证返回数据，确保与批次对应
+                console.log(`🔍 验证批次#${batchNumber} API返回: 收到${commentsData.length}个结果, 应该处理索引范围[${batchStartIndex}-${batchStartIndex + batch.length - 1}]`);
+                
+                // 检查并修复索引 - 尽管我们请求使用全局索引，但仍需防止API不遵循指令
+                for (let i = 0; i < commentsData.length; i++) {
+                    const expectedIndex = batchStartIndex + i;
+                    if (commentsData[i].chunkIndex !== expectedIndex) {
+                        console.warn(`⚠️ 索引不匹配: API返回chunkIndex=${commentsData[i].chunkIndex}, 预期=${expectedIndex}, 已修正`);
+                        commentsData[i].chunkIndex = expectedIndex;
+                    }
+                }
+                
+                // 确保所有批次中的代码块都有对应的评论
+                if (commentsData.length < batch.length) {
+                    console.warn(`⚠️ 警告: API返回结果数量(${commentsData.length})小于批次大小(${batch.length})!`);
+                    // 为缺失的代码块创建占位评论
+                    for (let i = 0; i < batch.length; i++) {
+                        const expectedIndex = batchStartIndex + i;
+                        if (!commentsData.some(data => data.chunkIndex === expectedIndex)) {
+                            console.warn(`⚠️ 为缺失的代码块索引 ${expectedIndex} 创建占位评论`);
+                            commentsData.push({
+                                chunkIndex: expectedIndex,
+                                comments: `⚠️ 由于API响应不完整，未能获取此代码块的详细注释。`
+                            });
+                        }
+                    }
+                }
             } catch (error) {
                 console.error(`Failed to parse comments JSON for batch #${batchNumber}: ${error}`);
                 // Fallback: treat the entire response as a single comment for all chunks
@@ -726,16 +793,51 @@ ${prompt.content}
                 const chunkIndex = commentData.chunkIndex;
                 if (chunkIndex >= 0 && chunkIndex < allChunks.length) {
                     const originalChunk = allChunks[chunkIndex];
+                    
+                    // 记录对应关系，确保每个代码块都有正确的增强注释
+                    const relativePath = path.relative(codebasePath, originalChunk.metadata.filePath || '');
+                    console.log(`🔄 处理代码块 ${chunkIndex}: ${relativePath}, 节点类型: ${originalChunk.metadata.nodeType || 'unknown'}${originalChunk.metadata.nodeName ? `, 名称: ${originalChunk.metadata.nodeName}` : ''}`);
+                    
+                    // 检查是否已经处理过这个代码块，避免重复处理
+                    if (resultChunks[chunkIndex].content !== allChunks[chunkIndex].content) {
+                        console.log(`⚠️ 代码块 ${chunkIndex} 已被处理过，跳过重复处理`);
+                        continue;
+                    }
+                    
                     resultChunks[chunkIndex] = {
-                        content: `## 原始chunk\n${originalChunk.content}\n\n## 增强描述chunk：\n${commentData.comments}`,
+                        content: `# 代码块: ${chunkIndex}
+## 元数据
+- 文件: ${path.basename(originalChunk.metadata.filePath || '')}
+- 语言: ${originalChunk.metadata.language || 'unknown'}
+- 类型: ${originalChunk.metadata.nodeType || 'unknown'}${originalChunk.metadata.nodeName ? `\n- 名称: ${originalChunk.metadata.nodeName}` : ''}
+
+## 功能摘要
+${commentData.comments.split('\n')[0] || ''}
+
+## 原始代码
+\`\`\`${originalChunk.metadata.language || ''}
+${originalChunk.content}
+\`\`\`
+
+## 详细注释
+${commentData.comments}`,
                         metadata: { ...originalChunk.metadata }
                     };
+                } else {
+                    console.warn(`⚠️ 警告: 收到无效的chunkIndex ${chunkIndex}, 超出范围 [0, ${allChunks.length - 1}]`);
                 }
             }
+            parseTime = Date.now() - parseStartTime;
             
-            console.log(`✅ Processed batch #${batchNumber} with ${batch.length} chunks`);
+            const totalDuration = Date.now() - batchStartTime;
+            console.log(`✅ Processed batch #${batchNumber} with ${batch.length} chunks in ${(totalDuration/1000).toFixed(2)}s
+            - Prompt preparation: ${(promptTime/1000).toFixed(2)}s (${Math.round(promptTime/totalDuration*100)}%)
+            - API call: ${(apiCallTime/1000).toFixed(2)}s (${Math.round(apiCallTime/totalDuration*100)}%)
+            - Parse & process: ${(parseTime/1000).toFixed(2)}s (${Math.round(parseTime/totalDuration*100)}%)
+            - Per chunk: ${(totalDuration/batch.length).toFixed(0)}ms`);
         } catch (error) {
-            console.error(`❌ Failed to generate comments for batch #${batchNumber}: ${error}`);
+            const duration = Date.now() - batchStartTime;
+            console.error(`❌ Failed to generate comments for batch #${batchNumber} after ${(duration/1000).toFixed(2)}s: ${error}`);
             // Original chunks are already in the resultChunks array as fallback
         }
     }
@@ -752,7 +854,7 @@ ${prompt.content}
             case 'method_declaration':
                 return '详细分析方法调用的其他方法或服务、使用的类或对象、调用链路、操作的数据结构';
             case 'interface_declaration':
-                return '详细分析接口的继承关系、定义的方法契约、哪些类实现了该接口、接口与其他接口的关系';
+                return '详细分析接口的继承关系、定义的方法声明、哪些类实现了该接口、接口与其他接口的关系';
             case 'constructor_declaration':
                 return '详细分析构造函数初始化的对象依赖、注入的服务、调用的其他构造函数、创建的对象生命周期';
             default:
@@ -774,6 +876,7 @@ ${prompt.content}
         const estimatedTokens = chunks.reduce((sum, chunk) => sum + Math.ceil(chunk.content.length / 4), 0);
         
         console.log(`🔄 Processing batch of ${chunks.length} chunks (~${estimatedTokens} tokens)`);
+        const startTime = Date.now();
         
         try {
             // Generate semantic-rich Chinese comments for chunks - only if enabled
@@ -782,13 +885,26 @@ ${prompt.content}
             
             if (ENABLE_COMMENTS) {
                 console.log(`🤖 Generating comments enabled - processing chunks with comments`);
+                const commentStartTime = Date.now();
                 enhancedChunks = await this.generateChunkComments(chunks, codebasePath);
+                const commentDuration = Date.now() - commentStartTime;
+                console.log(`📊 Comment generation completed in ${(commentDuration/1000).toFixed(2)}s`);
             }
             
             // Process chunks with comments
+            const embeddingStartTime = Date.now();
             await this.processChunkBatch(codebasePath, chunks, enhancedChunks);
+            const embeddingDuration = Date.now() - embeddingStartTime;
+            const totalDuration = Date.now() - startTime;
+            
+            console.log(`📈 Performance stats: 
+            - Total processing time: ${(totalDuration/1000).toFixed(2)}s
+            - Embedding time: ${(embeddingDuration/1000).toFixed(2)}s (${Math.round(embeddingDuration/totalDuration*100)}%)
+            - Avg. time per chunk: ${(totalDuration/chunks.length).toFixed(2)}ms`);
+            
         } catch (error) {
-            console.error(`❌ Failed during chunk processing: ${error}`);
+            const duration = Date.now() - startTime;
+            console.error(`❌ Failed during chunk processing after ${(duration/1000).toFixed(2)}s: ${error}`);
             // Fallback to processing without comments
             await this.processChunkBatch(codebasePath, chunks);
         }
@@ -800,11 +916,21 @@ ${prompt.content}
     private async processChunkBatch(codebasePath: string, chunks: CodeChunk[], enhancedChunks?: CodeChunk[]): Promise<void> {
         // Generate embedding vectors
         const chunkContents = chunks.map(chunk => chunk.content);
-        console.log(`🔄 chunkContents: ${chunkContents}`);
+        //console.log(`🔄 chunkContents: ${chunkContents}`);
 
         // 如果enhancedChunks不为空，则使用enhancedChunks的content
         const enhancedChunkContents = enhancedChunks ? enhancedChunks.map(chunk => chunk.content) : chunkContents;
-        console.log(`🔄 enhancedChunkContents: ${enhancedChunkContents}`);
+        console.log(`🔄 处理增强后的代码块: ${enhancedChunks ? enhancedChunks.length : 0} 个`);
+        
+        // 验证增强块与原始块的数量是否一致
+        if (enhancedChunks && enhancedChunks.length !== chunks.length) {
+            console.warn(`⚠️ 警告: 增强块数量(${enhancedChunks.length})与原始块数量(${chunks.length})不一致!`);
+        }
+        
+        // 不要直接打印整个数组内容，避免内容混合在一起
+        // enhancedChunkContents.forEach(content => {
+        //     console.log(`🔄 处理增强后的代码块: ${content}`);
+        // });
 
         // 对enhancedChunkContents进行embedding；colelction中存的还是原始chunk(包括原有注释)
         const embeddings: EmbeddingVector[] = await this.embedding.embedBatch(enhancedChunkContents);
